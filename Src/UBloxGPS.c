@@ -5,6 +5,7 @@
 #include <math.h>
 #include <string.h>
 #include "Trace.h"
+#include "Systime.h"
 #include "GPS.h"
 #include "stm32l0xx.h"
 
@@ -53,7 +54,7 @@ static UBX_MESSAGE INIT_NAV_MESSAGE = { sizeof(_UBX_INIT_NAV5_MESSAGE),
 // interrupt handler.
 // Interested consumers should disable interrupts, copy the unsafes into a their locally
 // managed safe copies and re-enable interrupts.
-volatile NMEA_TimeInfo_t nmeaTimeInfo_unsafe;
+volatile DateTime_t nmeaTimeInfo_unsafe;
 volatile NMEA_CRS_SPD_Info_t nmeaCRSSPDInfo_unsafe;
 volatile Location_t nmeaPositionInfo_unsafe;
 volatile NMEA_StatusInfo_t nmeaStatusInfo_unsafe;
@@ -117,7 +118,8 @@ static void beginSendUBXMessage(UBX_MESSAGE* message) {
 }
 
 void USART2_IRQHandler() {
-	if (USART2->ISR & USART_ISR_RXNE) {
+	uint32_t stat = USART2->ISR;
+	if (stat & USART_ISR_RXNE) {
 		uint16_t rxd = USART2->RDR;
 		nmea_parse(rxd);
 	}
@@ -730,23 +732,23 @@ uint8_t nmea_parse(char c) {
 extern void onNewGPSData();
 
 void GPS_getData() {
-	NVIC_DisableIRQ(LPUART1_IRQn);
+	NVIC_DisableIRQ(USART2_IRQn);
 	__DSB();
 	__ISB();
 
 	// These are committed by the IRQ handler once messages are complete.
-	GPSTime = nmeaTimeInfo_unsafe;
+	GPSDateTime = nmeaTimeInfo_unsafe;
 	GPSCourseSpeed = nmeaCRSSPDInfo_unsafe;
 	GPSPosition = nmeaPositionInfo_unsafe;
 	GPSStatus = nmeaStatusInfo_unsafe;
 
 	onNewGPSData();
-	NVIC_EnableIRQ(LPUART1_IRQn);
+	NVIC_EnableIRQ(USART2_IRQn);
 }
 
 void GPS_powerOn() {
 	// Reset the message sending
-	lastSendConfigurationTime = HAL_GetTick() - GPS_CONF_RESEND_INTERVAL;
+	lastSendConfigurationTime = systimeMillis() - GPS_CONF_RESEND_INTERVAL;
 	currentSendingIndex = 0;
 	currentSendingMessage = NULL;
 	navSettingsConfirmed = false;
@@ -757,7 +759,8 @@ void GPS_powerOn() {
 	SET_BIT(RCC->APB1ENR, RCC_APB1ENR_USART2EN);
 
 	// and GPIO clock too
-	SET_BIT(RCC->IOPENR, RCC_IOPENR_GPIOAEN);
+	// SET_BIT(RCC->IOPENR, RCC_IOPENR_GPIOAEN);
+	enableGPIOClock(RCC_IOPENR_GPIOAEN);
 
 	// Set to alternate function
 	GPIOA->MODER = (GPIOA->MODER & ~(3 << (2 * 2))) | (2 << (2 * 2));
@@ -770,10 +773,13 @@ void GPS_powerOn() {
 	uint32_t brr = 16E6 / 9600;
 	USART2->BRR = brr;
 
+	NVIC_SetPriority(USART2_IRQn, 2);
+	NVIC_EnableIRQ(USART2_IRQn);
+
+	// Don't care about overrun detect (what can we do anyway)
+	USART2->CR3 |= USART_CR3_OVRDIS;
 	// Enable transmitter, and the usart itself.
 	USART2->CR1 = USART_CR1_RE | USART_CR1_UE | USART_CR1_RXNEIE;
-
-	NVIC_SetPriority(USART2_IRQn, 1);
 
 	state = STATE_IDLE;
 }

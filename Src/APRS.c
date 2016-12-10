@@ -79,13 +79,15 @@ static uint8_t statusMessageValue(char memo, float in, char* out) {
 	int i_tenthdigit = i_Tenths % 10;
 	if (i_tenthdigit < 0)
 		i_tenthdigit = -i_tenthdigit;
-	return sprintf(out, ",%c%d.%c%c", memo, i_Whole, (i_tenthdigit + '0'), (i_hundredthdigit + '0'));
+	return sprintf(out, ",%c%d.%c%c", memo, i_Whole, (i_tenthdigit + '0'),
+			(i_hundredthdigit + '0'));
 }
 
 /*
  * See http://he.fi/doc/aprs-base91-comment-telemetry.txt for specification of this.
  */
-static uint8_t compressTelemetry(uint16_t seq, uint8_t nval, uint16_t* vals, char* out) {
+static uint8_t compressTelemetry(uint16_t seq, uint8_t nval, uint16_t* vals,
+		char* out) {
 	out[0] = '|';
 	base91encode2char(seq, out + 1);
 	uint8_t pos = 3;
@@ -143,7 +145,8 @@ static uint8_t compressedTimestamp(uint8_t date, Time_t* time, char* out) {
 	return sprintf(out, "%02d%02d%02dz", date, time->hours, time->minutes);
 }
 
-static void aprs_send_header(const AX25_Address_t* destination, uint16_t txDelay) {
+static void aprs_send_header(const AX25_Address_t* destination,
+		uint16_t txDelay) {
 	ax25_begin(txDelay);
 
 	uint8_t numAddresses = 0;
@@ -165,12 +168,10 @@ static void aprs_send_header(const AX25_Address_t* destination, uint16_t txDelay
 static uint16_t statusMessageSequence __attribute__((section (".noinit")));
 
 // Exported functions
-void APRS_marshallStatusMessage(
-		uint32_t txFrequency,
-		uint32_t referenceFrequency,
-		uint16_t txDelay
+void APRS_marshallStatusMessage(uint32_t txFrequency,
+		uint32_t referenceFrequency, uint16_t txDelay
 		// Something about uptime, brownout resets, ...
-	) {
+		) {
 
 	char temp[12];
 
@@ -187,41 +188,41 @@ void APRS_marshallStatusMessage(
 	ax25_send_string(temp);
 
 	/*
-	sprintf(temp, ",d%d", (int) odometer_nm);
-	ax25_send_string(temp);
+	 sprintf(temp, ",d%d", (int) odometer_nm);
+	 ax25_send_string(temp);
 
-	statusMessageValue('v', climbRate, temp);
-	ax25_send_string(temp);
+	 statusMessageValue('v', climbRate, temp);
+	 ax25_send_string(temp);
 
-	sprintf(temp, ",r%u", numRestarts);
-	ax25_send_string(temp);
+	 sprintf(temp, ",r%u", numRestarts);
+	 ax25_send_string(temp);
 
-	sprintf(temp, ",f%lu", txFrequency / 1000);
-	ax25_send_string(temp);
+	 sprintf(temp, ",f%lu", txFrequency / 1000);
+	 ax25_send_string(temp);
 
-	statusMessageValue('b', batteryVoltage, temp);
-	ax25_send_string(temp);
+	 statusMessageValue('b', batteryVoltage, temp);
+	 ax25_send_string(temp);
 
-	statusMessageValue('s', solarVoltage, temp);
-	ax25_send_string(temp);
+	 statusMessageValue('s', solarVoltage, temp);
+	 ax25_send_string(temp);
 
-	statusMessageValue('g', PHY_batteryAfterGPSVoltage(), temp);
-	ax25_send_string(temp);
+	 statusMessageValue('g', PHY_batteryAfterGPSVoltage(), temp);
+	 ax25_send_string(temp);
 
-	statusMessageValue('h', PHY_batteryAfterHFVoltage(), temp);
-	ax25_send_string(temp);
+	 statusMessageValue('h', PHY_batteryAfterHFVoltage(), temp);
+	 ax25_send_string(temp);
 
-	const CalibrationRecord_t* cal = getCalibration(simpleTemperature);
-	int32_t freqError = cal->transmitterOscillatorFrequencyAtDefaultTrim - PLL_XTAL_DEFAULT_FREQUENCY;
-	sprintf(temp, ",o%ld", freqError);
-	ax25_send_string(temp);
+	 const CalibrationRecord_t* cal = getCalibration(simpleTemperature);
+	 int32_t freqError = cal->transmitterOscillatorFrequencyAtDefaultTrim - PLL_XTAL_DEFAULT_FREQUENCY;
+	 sprintf(temp, ",o%ld", freqError);
+	 ax25_send_string(temp);
 
-	char safe = (PWR_isSafeToUseDevice(E_DEVICE_GPS) ? 1 : 0)
-			+ (PWR_isSafeToUseDevice(E_DEVICE_HF_TX) ? 2 : 0)
-			+ (PWR_isSafeToUseDevice(E_DEVICE_VHF_TX) ? 4 : 0);
-	sprintf(temp, ",G%c,", '0' + safe);
-	ax25_send_string(temp);
-	*/
+	 char safe = (PWR_isSafeToUseDevice(E_DEVICE_GPS) ? 1 : 0)
+	 + (PWR_isSafeToUseDevice(E_DEVICE_HF_TX) ? 2 : 0)
+	 + (PWR_isSafeToUseDevice(E_DEVICE_VHF_TX) ? 4 : 0);
+	 sprintf(temp, ",G%c,", '0' + safe);
+	 ax25_send_string(temp);
+	 */
 
 	ax25_send_byte('m');
 	ax25_send_byte(scheduleName);
@@ -240,13 +241,10 @@ void APRS_marshallPositionMessage(uint16_t txDelay) {
 	if (_temperature < 0)
 		_temperature = 0;
 
-	uint16_t telemetryValues[] = {
-			(uint16_t) (batteryVoltage * 1000.0f),
-			(uint16_t) (solarVoltage * 1000.0f),
-			_temperature * 10,	// Will require an offset of 100
-			lastGPSFixTime,
-			(int16_t)(speed_kts * 10) // conversion to 1/10 kts
-	};
+	uint16_t telemetryValues[] = { (uint16_t) (batteryVoltage * 1000.0f),
+			(uint16_t) (solarVoltage * 1000.0f), _temperature * 10,	// Will require an offset of 100
+			lastGPSFixTime, (int16_t) (speed_kts * 10) // conversion to 1/10 kts
+			};
 
 	aprs_send_header(&APRS_APSTM1_DEST, txDelay);
 	char temp[40];                   // Temperature (int/ext)
@@ -257,9 +255,10 @@ void APRS_marshallPositionMessage(uint16_t txDelay) {
 	// excludeZones(&location); no need any more.
 
 	float alt = GPSPosition.alt;
-	if (alt < 0) alt = 0;
+	if (alt < 0)
+		alt = 0;
 
-	end = compressPosition(location.lat, location.lon, alt , temp);
+	end = compressPosition(location.lat, location.lon, alt, temp);
 
 	telemetrySequence++;
 	if (telemetrySequence > 8280) {
@@ -273,70 +272,108 @@ void APRS_marshallPositionMessage(uint16_t txDelay) {
 	ax25_end();
 }
 
-void APRS_marshallStoredPositionMessage(
-		LogRecord_t* record,
+/* no longer used.
+ void APRS_marshallStoredPositionMessage(LogRecord_t* record, uint16_t txDelay) {
+ aprs_send_header(&APRS_APSTM1_DEST, txDelay);
+ char temp[40];
+ ax25_send_byte('/'); // Report w timestamp, no APRS messaging.
+ uint8_t end = 0;
+
+ Time_t uncompressedTime;
+ uint8_t date = uncompressDateHoursMinutes(record, &uncompressedTime);
+ end = compressedTimestamp(date, &uncompressedTime, temp);
+ end += compressPosition(record->lat, record->lon, record->alt, temp + end);
+
+ // int16_t speed = (int16_t)(record->speed * 10); // conversion to 1/10 kts
+
+ uint16_t telemetryValues[] = { uncompressBatteryVoltageTomV(record),
+ uncompressSolarVoltageTomV(record),
+ / * (record->simpleTemperature +100)*10 * /0,	// Will require an offset of 100
+ 0,
+ / *speed* /0 };
+
+ end += compressTelemetry(telemetrySequence, 5, telemetryValues, temp + end);
+
+ telemetrySequence++;
+ if (telemetrySequence > 8280) {
+ telemetrySequence = 0;
+ }
+
+ temp[end] = 0;
+ ax25_send_string(temp);
+ ax25_end();
+ }
+ */
+static size_t binaryMarshallWordByBase91(char buf[], uint32_t word) {
+	for (size_t i = 0; i < 5; i++) {
+		uint16_t work = word % 91;
+		buf[i] = work + 33;
+		word = word / 91;
+	}
+	return 5;
+}
+
+void APRS_marshallFlightLogMessage(LogRecord_t* message[], int count,
 		uint16_t txDelay) {
 	aprs_send_header(&APRS_APSTM1_DEST, txDelay);
-	char temp[40];
-	ax25_send_byte('/'); // Report w timestamp, no APRS messaging.
-	uint8_t end = 0;
-
-	Time_t uncompressedTime;
-	uint8_t date = uncompressDateHoursMinutes(record, &uncompressedTime);
-	end = compressedTimestamp(date, &uncompressedTime, temp);
-	end += compressPosition(record->lat, record->lon, record->alt, temp + end);
-
-	// int16_t speed = (int16_t)(record->speed * 10); // conversion to 1/10 kts
-
-	uint16_t telemetryValues[] = {
-			uncompressBatteryVoltageTomV(record),
-			uncompressSolarVoltageTomV(record),
-			/* (record->simpleTemperature +100)*10 */ 0,			// Will require an offset of 100
-			0,
-			/*speed*/ 0 };
-
-	end += compressTelemetry(telemetrySequence, 5, telemetryValues, temp + end);
-
-	telemetrySequence++;
-	if (telemetrySequence > 8280) {
-		telemetrySequence = 0;
+	ax25_send_byte('>');
+	// Status message
+	//The status text occupies the rest of the Information field, and may be up to 62 characters long
+	// (if there is no timestamp in the report) or 55 characters (if there is a timestamp).
+	// The text may contain any printable ASCII characters except | or ~.
+	// Approach: base-91, 6.5077946401987 bits per char.
+	// Each message word fits into 5 chars (32/6.5077946401987 <= 5)
+	size_t sizeInWords = (sizeof(LogRecord_t) + 3) / 4;
+	char temp[64];
+	temp[1] = '+';
+	size_t offset = 1;
+	if (count > 62 / (sizeInWords * 5)) // 62 is max. message body in chars and each word is 5 chars.
+		count = 62 / (sizeInWords * 5);
+	for (size_t i = 0; i < count; i++) {
+		uint32_t* unstructuredMessage = (uint32_t*) message[i];
+		for (size_t j = 0; j < sizeInWords; j++) {
+			offset += binaryMarshallWordByBase91(temp + offset, unstructuredMessage[j]);
+		}
 	}
-
-	temp[end] = 0;
+	temp[offset] = 0;
 	ax25_send_string(temp);
 	ax25_end();
 }
-const APRSTransmission_t APRS_TRANSMISSIONS[] = {
-		{ 		.modulationMode = AFSK,
-				.txDelay = 16,
-				.initTransmitter = APRS_initDirectVHFTransmission,
-				.shutdownTransmitter = APRS_endDirectTransmission },
-		{ 		.modulationMode = GFSK,
-				.txDelay = 10,
-				.initTransmitter = APRS_initDirectHFTransmission,
-				.shutdownTransmitter = APRS_endDirectTransmission }
-		};
+
+const APRSTransmission_t APRS_TRANSMISSIONS[] = { { .modulationMode = AFSK,
+		.txDelay = 16, .initTransmitter = APRS_initDirectVHFTransmission,
+		.shutdownTransmitter = APRS_endDirectTransmission }, { .modulationMode =
+		GFSK, .txDelay = 10, .initTransmitter = APRS_initDirectHFTransmission,
+		.shutdownTransmitter = APRS_endDirectTransmission } };
 
 void APRS_makeDirectTransmissionFrequency(uint32_t frequency,
 		uint32_t referenceFrequency, CDCE913_OutputMode_t output) {
 	PLL_Setting_t pllSetting;
 	double maxError = 30E-6;
-	if (PLL_bestPLLSetting(referenceFrequency, frequency, maxError, &pllSetting)) {
-		trace_printf("Using N=%d, M=%d, trim=%d\n", pllSetting.N, pllSetting.M, pllSetting.trim);
+	if (PLL_bestPLLSetting(referenceFrequency, frequency, maxError,
+			&pllSetting)) {
+		trace_printf("Using N=%d, M=%d, trim=%d\n", pllSetting.N, pllSetting.M,
+				pllSetting.trim);
 		setPLL(output, &pllSetting);
 	} else {
 		trace_printf("Was not able to find a setting (weird)\n");
 	}
 }
 
-static void APRS_initDirectHFTransmission(uint32_t frequency, uint32_t referenceFrequency) {
+static void APRS_initDirectHFTransmission(uint32_t frequency,
+		uint32_t referenceFrequency) {
 	// HF_enableDriver(HF_power());
-	APRS_makeDirectTransmissionFrequency(frequency, referenceFrequency, HF_30m_HARDWARE_OUTPUT);
+	APRS_makeDirectTransmissionFrequency(
+			frequency,
+			referenceFrequency,
+			HF_30m_HARDWARE_OUTPUT);
 	// GFSK_init();
 }
 
-static void APRS_initDirectVHFTransmission(uint32_t frequency, uint32_t referenceFrequency) {
-	APRS_makeDirectTransmissionFrequency(frequency, referenceFrequency, DIRECT_2m_HARDWARE_OUTPUT);
+static void APRS_initDirectVHFTransmission(uint32_t frequency,
+		uint32_t referenceFrequency) {
+	APRS_makeDirectTransmissionFrequency(frequency, referenceFrequency,
+	DIRECT_2m_HARDWARE_OUTPUT);
 	AFSK_init();
 }
 
@@ -352,12 +389,9 @@ extern void APRS_marshallStoredPositionMessage(LogRecord_t* record,
 extern void APRS_marshallStatusMessage(uint32_t frequency,
 		uint32_t referenceFrequency, uint16_t txDelay);
 
-static void _APRS_transmitMessage(
-		APRS_Band_t band,
-		APRS_MessageType_t messageType,
-		LogRecord_t* storedMessage,
-		uint32_t frequency,
-		uint32_t referenceFrequency) {
+static void _APRS_transmitMessage(APRS_Band_t band,
+		APRS_MessageType_t messageType, LogRecord_t* storedMessage,
+		uint32_t frequency, uint32_t referenceFrequency) {
 
 	const APRSTransmission_t* mode = &APRS_TRANSMISSIONS[band];
 
@@ -369,13 +403,14 @@ static void _APRS_transmitMessage(
 		APRS_marshallStoredPositionMessage(storedMessage, mode->txDelay);
 		break;
 	case STATUS_MESSAGE:
-		APRS_marshallStatusMessage(frequency, referenceFrequency, mode->txDelay);
+		APRS_marshallStatusMessage(frequency, referenceFrequency,
+				mode->txDelay);
 		break;
 	}
 
 	LED_PORT->BSRR = LED_ON; // LED
 
-	// Go now.
+	// Prepare WFI
 	PWR->CR = (PWR->CR & ~3) | PWR_CR_ULP | PWR_CR_FWU;
 	SCB->SCR &= ~4; // Don't STOP.
 
@@ -394,29 +429,15 @@ static void _APRS_transmitMessage(
 	trace_printf("Tx-end\n");
 }
 
-void APRS_transmitMessage(
-		APRS_Band_t band,
-		APRS_MessageType_t messageType,
-		uint32_t frequency,
-		uint32_t referenceFrequency) {
-	_APRS_transmitMessage(
-			band,
-			messageType,
-			(LogRecord_t*) 0,
-			frequency,
+void APRS_transmitMessage(APRS_Band_t band, APRS_MessageType_t messageType,
+		uint32_t frequency, uint32_t referenceFrequency) {
+	_APRS_transmitMessage(band, messageType, (LogRecord_t*) 0, frequency,
 			referenceFrequency);
 }
 
-void APRS_transmitStoredMessage(
-		APRS_Band_t band,
-		LogRecord_t* storedMessage,
-		uint32_t frequency,
-		uint32_t referenceFrequency) {
-	_APRS_transmitMessage(
-			band,
-			STORED_POSITION_MESSAGE,
-			storedMessage,
-			frequency,
-			referenceFrequency);
+void APRS_transmitStoredMessage(APRS_Band_t band, LogRecord_t* storedMessage,
+		uint32_t frequency, uint32_t referenceFrequency) {
+	_APRS_transmitMessage(band, STORED_POSITION_MESSAGE, storedMessage,
+			frequency, referenceFrequency);
 }
 

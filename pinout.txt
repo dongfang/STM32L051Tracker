@@ -1,0 +1,55 @@
+Hardware summary, simple shitty tracker:
+
+CPU STM32L051K8
+PLL CDCE(L)913
+GPS MAX-7c. Vcc_io is jumpered between switched Vcc and a solid Vcc_bkup. All other MAX-7 only run at voltages we don't have.
+
+Power SPV1040
+  Battery config: Stepdown switcher like Alan (since voltage is too high for direct)
+  Supercap config: Direct
+  
+Radio
+  Si4463 optional (different pcb??)
+  
+HF booster 74HC04 bridgeable (since no better idea)
+
+1 Vdd
+2 Osc32
+3 Osc32
+4 NRST
+5 Vdd_A
+6 PA0
+7 PA1
+8 PA2
+9 PA3
+10 PA4
+11 PA5
+12 PA6
+13 PA7
+14 PB0
+15 PB1
+16 Vss
+17 Vdd
+18 PA8 = RCC_MCO (AF0)
+19 PA9 = RCC_MCO alternate (AF0)
+20 PA10
+21 PA11
+22 PA12
+23 PA13
+24 PA14
+25 PA15
+26 PB3
+27 PB4
+28 PB5
+29 PB6
+30 PB7
+31 BOOT0
+32 Vss
+
+Input capture can be any of:
+PA2, PA3, PA6, PA7, PB4, PB5. If using (PA6, PB4) or (PA7, PB5), the same software can be reused only with an AF change between PLL and GPS :)
+
+USART1: PA9, PA10 or PB6, PB7
+USART2: PA14, PA14 or PA2, PA3
+I2C: PB6, PB7
+SPI: (PA5 or PB3) and (PA11 or PA6 or PB4) and (PA12 or PA7 or PB5)

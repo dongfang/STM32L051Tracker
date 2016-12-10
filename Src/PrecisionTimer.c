@@ -82,7 +82,7 @@ volatile int32_t PT_captureCount __attribute__((section (".noinit")));
  }
  */
 
-void TIM22_LSECycleCount_ETR(TimerMeasurement_t inputSelect) {
+static void setupGPIO(TimerMeasurement_t inputSelect) {
 	RCC->APB2ENR |= RCC_APB2ENR_TIM22EN;
 
 	// Reset the TIM22 periph if we feel so inclined.
@@ -93,9 +93,10 @@ void TIM22_LSECycleCount_ETR(TimerMeasurement_t inputSelect) {
 	//case RTC_CYCLES_PER_GPS_CYCLE:
 	if (inputSelect == RTC_CYCLES_PER_GPS_CYCLE || inputSelect == PLL_CYCLES_PER_GPS_CYCLE) {
 		// Enable GPIOA clock
-		SET_BIT(RCC->IOPENR, RCC_IOPENR_GPIOAEN);
+		// SET_BIT(RCC->IOPENR, RCC_IOPENR_GPIOAEN);
+		enableGPIOClock(RCC_IOPENR_GPIOAEN);
 
-		// Alternate function #5 TIM22_CH1
+		// Alternate function #5 TIM22_CH1 on PA6, for GPS timepulse.
 		GPIOA->MODER = (GPIOA->MODER & ~(3 << (2 * 6))) | 2 << (2 * 6);
 		// GPIOA->MODER = (GPIOA->MODER & ~(3 << (2 * 2))) | 0 << (2 * 2);
 		GPIOA->AFR[0] = (GPIOA->AFR[0] & ~(15 << (4 * 6))) | (5 << (4 * 6));
@@ -104,9 +105,10 @@ void TIM22_LSECycleCount_ETR(TimerMeasurement_t inputSelect) {
 	//case RTC_CYCLES_PER_PLL_CYCLE:
 	if (inputSelect == RTC_CYCLES_PER_PLL_CYCLE) {
 		// Enable GPIOB clock
-		SET_BIT(RCC->IOPENR, RCC_IOPENR_GPIOBEN);
+		// SET_BIT(RCC->IOPENR, RCC_IOPENR_GPIOBEN);
+		enableGPIOClock(RCC_IOPENR_GPIOBEN);
 
-		// Alternate function #4 TIM22_CH1
+		// Alternate function #4 TIM22_CH1 on PB4
 		GPIOB->MODER = (GPIOB->MODER & ~(3 << (2 * 4))) | 2 << (2 * 4);
 		// GPIOA->MODER = (GPIOA->MODER & ~(3 << (2 * 2))) | 0 << (2 * 2);
 		GPIOB->AFR[0] = (GPIOB->AFR[0] & ~(15 << (4 * 4))) | (4 << (4 * 4));
@@ -114,13 +116,21 @@ void TIM22_LSECycleCount_ETR(TimerMeasurement_t inputSelect) {
 
 	else if (inputSelect == PLL_CYCLES_PER_GPS_CYCLE) {
 		// Enable GPIOB clock
-		SET_BIT(RCC->IOPENR, RCC_IOPENR_GPIOBEN);
+		// SET_BIT(RCC->IOPENR, RCC_IOPENR_GPIOBEN);
+		enableGPIOClock(RCC_IOPENR_GPIOBEN);
 
-		// Alternate function #4 TIM22_CH2
+		// Alternate function #4 TIM22_CH2 on PB5
 		GPIOB->MODER = (GPIOB->MODER & ~(3 << (2 * 5))) | 2 << (2 * 5);
 		// GPIOA->MODER = (GPIOA->MODER & ~(3 << (2 * 2))) | 0 << (2 * 2);
 		GPIOB->AFR[0] = (GPIOB->AFR[0] & ~(15 << (4 * 5))) | (4 << (4 * 5));
 	}
+}
+
+double measurePeriod(TimerMeasurement_t inputSelect, uint32_t numRTCCycles) {
+	PT_extendedCaptureValue = 0;
+	PT_captureCount = -1;
+
+	setupGPIO(inputSelect);
 
 	// Enable TIM22 clock
 	RCC->APB2ENR |= RCC_APB2ENR_TIM22EN;
@@ -129,9 +139,10 @@ void TIM22_LSECycleCount_ETR(TimerMeasurement_t inputSelect) {
 	TIM22->ARR = 60000 - 1;
 
 	// Select external trigger as source.
+	// only or LSE in really.
 	TIM22->SMCR |= TIM_SMCR_ECE;
 
-	// Set up capture input (PA6)
+	// Set up capture input
 	TIM22->CCMR1 = (TIM22->CCMR1 & ~ TIM_CCMR1_CC1S) | TIM_CCMR1_CC1S_0; // use TI1 for CC1 input
 
 	// If measuring PLL, prescale by 8.
@@ -159,13 +170,6 @@ void TIM22_LSECycleCount_ETR(TimerMeasurement_t inputSelect) {
 	TIM22->CCER |= TIM_CCER_CC1E;  // enable capture input 1
 
 	TIM22->CR1 |= TIM_CR1_CEN;
-}
-
-double measurePeriod(TimerMeasurement_t inputSelect, uint32_t numRTCCycles) {
-	PT_extendedCaptureValue = 0;
-	PT_captureCount = -1;
-
-	TIM22_LSECycleCount_ETR(inputSelect);
 
 	NVIC_SetPriority(TIM22_IRQn, 0);
 	NVIC_EnableIRQ(TIM22_IRQn);
@@ -206,5 +210,63 @@ double measurePeriod(TimerMeasurement_t inputSelect, uint32_t numRTCCycles) {
 	GPIOA->MODER &= ~(3 << (2 * 6));
 	GPIOB->MODER &= ~(3 << (2 * 4));
 	return result;
+}
+
+// Dumps its result into PT_extendedCaptureValues
+uint32_t directPLLGPScalibration(uint8_t numCycles) {
+	PT_extendedCaptureValue = 0;
+	PT_captureCount = -1;
+
+	setupGPIO(PLL_CYCLES_PER_GPS_CYCLE);
+
+	// Set up an EXTI interrupt
+	// GPIO
+
+	// Enable TIM22 clock
+	RCC->APB2ENR |= RCC_APB2ENR_TIM22EN;
+
+	TIM22->PSC = 0;
+	TIM22->ARR = 60000 - 1;
+	//
+	TIM22->SMCR |= TIM_SMCR_SMS | TIM_SMCR_TS_2 | TIM_SMCR_TS_1;
+
+	TIM22->CCMR1 |= TIM_CCMR1_CC1S_0;
+
+	// Set up capture input (PA6)
+	// TIM22->CCMR1 = (TIM22->CCMR1 & ~ TIM_CCMR1_CC1S) | TIM_CCMR1_CC1S_0; // use TI1 for CC1 input
+
+	TIM22->CCER |= TIM_CCER_CC1E;  // enable capture input 1
+
+	TIM22->CR1 |= TIM_CR1_CEN;
+
+	// Clear old interrupt flags(?)
+	TIM22->SR &= ~(TIM_SR_CC1IF | TIM_SR_CC1OF);
+
+	NVIC_SetPriority(TIM22_IRQn, 0);
+	NVIC_EnableIRQ(TIM22_IRQn);
+
+	// Enable capture interrupt.
+	TIM22->DIER |= TIM_DIER_CC1IE | TIM_DIER_UIE;
+
+	// Go now.
+	PWR->CR = (PWR->CR & ~3) | PWR_CR_ULP | PWR_CR_FWU;
+	SCB->SCR &= ~4; // Don't STOP.
+
+	while (PT_captureCount < numCycles) {
+		__WFI();
+	}
+
+	// Disable capture/compare (not strictly needed)
+	TIM22->CCER &= ~TIM_CCER_CC1E;
+
+	// Disable the whole timer (not strictly needed)
+	TIM22->CR1 &= ~TIM_CR1_CEN;
+
+	// Unmap the AFs. This is important, or else we might enable both mappings at the same time later.
+	// That does not work.
+	GPIOA->MODER &= ~(3 << (2 * 6));
+	GPIOB->MODER &= ~(3 << (2 * 4));
+
+	return PT_extendedCaptureValue;
 }
 

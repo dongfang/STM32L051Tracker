@@ -2,6 +2,7 @@
 #include "CDCE913.h"
 #include "Trace.h"
 #include "Types.h"
+#include "Globals.h"
 
 // 7 bit address not including that stinky R/!W bit.
 #define CDCE913_I2C_ADDR 0b1100101
@@ -536,7 +537,7 @@ int8_t PLL_bestTrim(double desiredTrim) {
 	int8_t bestIndex = -1;
 
 	for (uint8_t i = PLL_MIN_TRIM_INDEX_VALUE; i <= PLL_MAX_TRIM_INDEX_VALUE; i++) {
-		int32_t test = desiredPP10M - PLL_XTAL_TRIM_PP10M[i];
+		int32_t test = desiredPP10M - pllCtrlCalibration.trimOffset[i];
 		if (test < 0)
 			test = -test;
 		if (test < bestError) {

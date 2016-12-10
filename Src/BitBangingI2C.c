@@ -6,7 +6,8 @@
 // PB7, SDA, is CN7,21 on nucleo (it has no arduino name).
 
 void I2C1_GPIO_Config(void) {
-	SET_BIT(RCC->IOPENR, RCC_IOPENR_GPIOBEN);
+	//SET_BIT(RCC->IOPENR, RCC_IOPENR_GPIOBEN);
+	enableGPIOClock(RCC_IOPENR_GPIOBEN);
 
 	// 6 and 7 are set to plain old output.
 	GPIOB->MODER = (GPIOB->MODER & ~(0b11 << (6 * 2) | 0b11 << (7 * 2)))

@@ -23,12 +23,13 @@ uint16_t lastGPSFixTime;
 uint16_t lastWSPRWindowWaitTime;
 boolean latestAPRSRegions[12]; 	 // 12 is sufficently large for the world map...
 boolean latestAPRSCores[12];	 // 12 is sufficently large for the world map...
-// const CalibrationRecord_t* currentCalibration;
 char scheduleName;
 
 float temperature;
+int8_t simpleTemperature;
+
 float batteryVoltage;
 float solarVoltage;
 float speed_kts;
 
-const int16_t PLL_XTAL_TRIM_PP10M[] = PLL_XTAL_TRIM_PP10M_VALUES;
+// const int16_t PLL_XTAL_TRIM_PP10M[] = PLL_XTAL_TRIM_PP10M_VALUES;

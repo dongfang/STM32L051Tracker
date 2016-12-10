@@ -7,26 +7,48 @@
 #include "stm32l0xx.h"
 #include "Trace.h"
 #include "NVM.h"
+#include "Calibration.h"
 
 // 0x0808 0000 - 0x0808 07FF
 // aka
 // #define DATA_EEPROM_BASE       ((uint32_t)0x08080000U) /*!< DATA_EEPROM base address in the alias region */
 // #define DATA_EEPROM_END        ((uint32_t)0x080807FFU) /*!< DATA EEPROM end address in the alias region */
 
-__attribute__((section(".flashnvm"))) const LogRecord_t flashdata[NUM_LOG_RECORDS];
-
-__attribute__((section(".eemem")))   const LogRecordIndex_t storedRecordIndex;
-__attribute__((section(".eemem")))   const PLLCtrlCalibration_t pllCtrlCalibration;
+__attribute__((section(".flashnvm")))  const LogRecord_t flashdata[NUM_LOG_RECORDS];
+__attribute__((section(".eemem")))    const LogRecordIndex_t storedRecordIndex;
+__attribute__((section(".eemem")))    const PLLCtrlCalibration_t pllCtrlCalibration;
+__attribute__((section(".eemem")))    const FlightLog_t flightLog;
+__attribute__((section(".eemem")))    const CalibrationRecord_t calibrationByTemperatureRanges[NUM_TEMPERATURE_RANGES];
 
 // Calibration record.
 // System status (blank, calibrated0..calibratedn, error)
 
 /*
-void eepromExperiment() {
+ void eepromExperiment() {
+ uint32_t alreadyRunning = RCC->AHBENR & RCC_AHBENR_MIFEN;
+ RCC->AHBENR |= RCC_AHBENR_MIFEN;
+
+ uint32_t old = *((uint32_t*) DATA_EEPROM_BASE);
+
+ // Unlock eeprom
+ FLASH->PEKEYR = 0x89ABCDEF;
+ FLASH->PEKEYR = 0x02030405;
+ uint32_t unlocked = ~(FLASH->PECR & FLASH_PECR_PELOCK);
+
+ FLASH->PECR &= ~(FLASH_PECR_ERASE | FLASH_PECR_FIX); // no need to erase
+ *((uint32_t*) DATA_EEPROM_BASE) = old + 1;
+
+ RCC->AHBENR = (RCC_AHBENR_MIFEN & ~RCC_AHBENR_MIFEN) | alreadyRunning;
+
+ // Lock again.
+ FLASH->PECR |= FLASH_PECR_PELOCK;
+ }
+ */
+
+void storeToEEPROM(uint32_t* const target, const uint32_t* const source,
+		size_t numWords) {
 	uint32_t alreadyRunning = RCC->AHBENR & RCC_AHBENR_MIFEN;
 	RCC->AHBENR |= RCC_AHBENR_MIFEN;
-
-	uint32_t old = *((uint32_t*) DATA_EEPROM_BASE);
 
 	// Unlock eeprom
 	FLASH->PEKEYR = 0x89ABCDEF;
@@ -34,36 +56,24 @@ void eepromExperiment() {
 	uint32_t unlocked = ~(FLASH->PECR & FLASH_PECR_PELOCK);
 
 	FLASH->PECR &= ~(FLASH_PECR_ERASE | FLASH_PECR_FIX); // no need to erase
-	*((uint32_t*) DATA_EEPROM_BASE) = old + 1;
-
-	RCC->AHBENR = (RCC_AHBENR_MIFEN & ~RCC_AHBENR_MIFEN) | alreadyRunning;
-
-	// Lock again.
-	FLASH->PECR |= FLASH_PECR_PELOCK;
-}
-*/
-
-void storeToEEPROM(uint32_t* data, size_t n) {
-	uint32_t alreadyRunning = RCC->AHBENR & RCC_AHBENR_MIFEN;
-	RCC->AHBENR |= RCC_AHBENR_MIFEN;
-
-	// Unlock eeprom
-	FLASH->PEKEYR = 0x89ABCDEF;
-	FLASH->PEKEYR = 0x02030405;
-	uint32_t unlocked = ~(FLASH->PECR & FLASH_PECR_PELOCK);
-
-	FLASH->PECR &= ~(FLASH_PECR_ERASE | FLASH_PECR_FIX); // no need to erase
-	for (size_t i=0; i<n; i++) {
+	for (size_t i = 0; i < numWords; i++) {
 		// "The software can reset it writing 1 in the status register."
 		FLASH->SR |= FLASH_SR_EOP;
-		*(((uint32_t*) DATA_EEPROM_BASE)+i) = data[i];
-		while ((FLASH->SR & FLASH_SR_EOP) == 0);
+		target[i] = source[i];
+		while ((FLASH->SR & FLASH_SR_EOP) == 0)
+			;
 	}
 
 	RCC->AHBENR = (RCC_AHBENR_MIFEN & ~RCC_AHBENR_MIFEN) | alreadyRunning;
 
 	// Lock again.
 	FLASH->PECR |= FLASH_PECR_PELOCK;
+}
+
+void NVM_writeCalibrationRecord(CalibrationRecord_t* const record,
+		uint8_t index) {
+	storeToEEPROM((uint32_t*) &calibrationByTemperatureRanges[index],
+			(uint32_t*) record, (sizeof(CalibrationRecord_t) + 3) / 4);
 }
 
 /* USER CODE END 0 */
@@ -118,9 +128,12 @@ void storeLogRecord(uint16_t i, LogRecord_t* const data) {
 	FLASH->PECR |= FLASH_PECR_PELOCK;
 }
 
-LogRecord_t* const logRecord(uint16_t i) {
-	return &flashdata[i];
-}
+/* not needed, really. Just access directly.
+ LogRecord_t* const logRecord(uint16_t i) {
+ return &flashdata[i];
+ }
+ */
+
 /*
  void HALFlashExperiment() {
  FLASH_OBProgramInitTypeDef pOBInit;

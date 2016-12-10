@@ -16,7 +16,8 @@ void trace_initialize() {
 	SET_BIT(RCC->APB2ENR, RCC_APB2ENR_USART1EN);
 
 	// and GPIO clock too
-	SET_BIT(RCC->IOPENR, RCC_IOPENR_GPIOAEN);
+	// SET_BIT(RCC->IOPENR, RCC_IOPENR_GPIOAEN);
+	enableGPIOClock(RCC_IOPENR_GPIOAEN);
 
 	// Set to alternate function
 	GPIOA->MODER = (GPIOA->MODER & ~(3 << (2 * 9))) | (2 << (2 * 9));

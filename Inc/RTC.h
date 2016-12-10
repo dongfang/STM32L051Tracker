@@ -24,4 +24,9 @@ void RTC_lock();
 void RTC_scheduleWakeup(uint16_t t);
 void RTC_scheduleAlarmA(RTC_Time_t* time);
 void RTC_scheduleAlarmB(RTC_Time_t* time);
+
+// As above but considers one past-midnight event
+int timeAfter_seconds(Time_t* from, Time_t* to);
+//int timeDiffModulo24(Time_t* from, Time_t* to);
+
 #endif /* RTC_H_ */

@@ -35,12 +35,6 @@ typedef enum {
 	INVALID,
 } MessageState;
 
-// various data in whatever units NMEA has chosen to use.
-typedef struct {
-	Time_t time;
-	Date_t date;
-} NMEA_TimeInfo_t;
-
 typedef struct {
 	float groundSpeed;
 	float course;
@@ -68,7 +62,7 @@ uint8_t GPS_waitForPrecisionPosition(uint32_t maxTime);
 // Fake location to be remote from certain stuff
 void excludeZones(Location_t* location);
 
-extern NMEA_TimeInfo_t GPSTime;
+extern DateTime_t GPSDateTime;
 extern uint8_t GPSDate;
 extern NMEA_CRS_SPD_Info_t GPSCourseSpeed;
 extern Location_t GPSPosition;

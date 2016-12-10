@@ -34,6 +34,10 @@ typedef enum {
 	STATUS_MESSAGE
 } APRS_MessageType_t;
 
+// Using packed locations saves 584 bytes...
+// typedef uint16_t APRSPolygonVertex_t;
+
+
 // Right. Lon is first. That's because Google Earth KML does same, just reduces data conversion effort.
 typedef struct {
 	const int16_t lon;

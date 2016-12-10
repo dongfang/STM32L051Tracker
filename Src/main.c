@@ -11,45 +11,14 @@
 #include "Systime.h"
 #include "APRS.h"
 #include "PrecisionTimer.h"
+#include "Power.h"
 #include <core_cm0plus.h>
-
-void setRuntimeClocks(void) {
-
-	// We should set up at least:
-	// An USART clock
-	// Probably need to run at 8-16MHz
-
-	// Page 174:
-	// In Range 1 (1.8V) we can run any system clock
-	// In Range 2 (1.5V) we cannot run any system clock (but HSE is limited in frequency)
-	// In Range 3 (1.2V) we can only run MSI 4.2MHz
-
-	RCC->CR = RCC_CR_HSION;
-	while (!(RCC->CR & RCC_CR_HSIRDY)) {
-	}
-
-	// If we want to set MSI to 1M, here it is
-	// RCC->ICSCR = 0xC000;
-
-	RCC->CFGR = 7U << 24 | // Output LSE to MCO
-			0 << 11 | // APB2 is divide by 1
-			0 << 8 |  // APB1 is divide by 1
-			0b1000 << 4 |  // SYSCLK is divide by 2
-			RCC_CFGR_SW_0 // use HSI16 as system clk
-	;
-
-	// wait for the switch to happen
-	while ((RCC->CFGR & RCC_CFGR_SWS) != RCC_CFGR_SWS_0) {
-	}
-
-	// Use system clock for USARTs.
-	RCC->CCIPR = (RCC->CCIPR & ~RCC_CCIPR_USART1SEL) | RCC_CCIPR_USART1SEL_0;
-	RCC->CCIPR = (RCC->CCIPR & ~RCC_CCIPR_USART2SEL) | RCC_CCIPR_USART2SEL_0;
-
-	SysTick_Config(8000);
-}
+#include "GPS.h"
+#include "PLL.h"
 
 static int loopCnt;
+
+extern NMEA_StatusInfo_t GPSStatus;
 
 /* The only situations definitely needing to be avoided are:
  * 1) Repetitive UVLO at GPS, blasting GPS backup
@@ -71,19 +40,16 @@ int main(void) {
 	trace_printf("Start\n");
 #endif
 	NVIC_SetPriority(RTC_IRQn, 2);
-
 	RTC_init();
 
+	GPS_powerOn();
+
+	// GPS_waitForTimelock(1000000);
+
 	/*
-	 while (1) {
-	 APRS_transmitMessage(
-	 VHF,
-	 COMPRESSED_POSITION_MESSAGE,
-	 144700000,
-	 26000000);
-	 }
-	 */
-	/*
+	while (1) {
+		APRS_transmitMessage(VHF, COMPRESSED_POSITION_MESSAGE, 144800000, 26000000);
+	}
 
 	 while (true) {
 	 RTC_read(&t);
@@ -111,24 +77,37 @@ int main(void) {
 	static int dir = 1;
 	long total = 0;
 
-	SET_BIT(RCC->IOPENR, RCC_IOPENR_GPIOAEN);
+	// SET_BIT(RCC->IOPENR, RCC_IOPENR_GPIOAEN);
+	enableGPIOClock(RCC_IOPENR_GPIOAEN);
+
+	PLL_shutdown();
+	// APRS_makeDirectTransmissionFrequency(50000000, 26000900, DIRECT_2m_HARDWARE_OUTPUT);
+
+	doWSPR(THIRTY_M);
 
 	while (1) {
-		//		PLL_printSettings();
-		//		PLL_setBypassModeWithDivision(10, 1023);
+		//PLL_setBypassModeWithDivision(14, 1000);
+		//double pllTime = measurePeriod(RTC_CYCLES_PER_PLL_CYCLE, 32768 * 5);
+		//PLL_shutdown();
+		//double gpsTime = measurePeriod(RTC_CYCLES_PER_GPS_CYCLE, 32768 * 5);
+		//double fpll = gpsTime / pllTime * 1000.0;
+		//trace_printf("pll: %lu, gps: %lu, fpll %lu\n",
+		//(uint32_t) (pllTime * 1000000.0), (uint32_t) (gpsTime * 100.0),
+		//(uint32_t) fpll);
+		//double ratio = measurePeriod(PLL_CYCLES_PER_GPS_CYCLE, 10);
 
-		PLL_setBypassModeWithDivision(14, 1000);
-		double pllTime = measurePeriod(RTC_CYCLES_PER_PLL_CYCLE, 32768 * 5);
-		PLL_shutdown();
+		// Input.
+		GPIOA->MODER = (GPIOA->MODER & ~(3 << (2 * 6))) | 0 << (2 * 6);
+		while ((GPIOA->IDR & (1 << 6)) == 0) {
+			GPS_getData();
+			trace_printf("Waiting for GPS timelock (%d)\n", GPSStatus.numberOfSatellites);
+			timer_sleep(1000);
+		}
 
-		double gpsTime = measurePeriod(RTC_CYCLES_PER_GPS_CYCLE, 32768 * 5);
+		trace_printf("tps\n");
+		PLL_setBypassModeWithDivision(10, 7);
 
-		double fpll = gpsTime / pllTime * 1000.0;
-
-		trace_printf("pll: %lu, gps: %lu, fpll %lu\n",
-				(uint32_t) (pllTime * 1000000.0), (uint32_t) (gpsTime * 100.0),
-				(uint32_t) fpll);
-		// double ratio = measurePeriod(PLL_CYCLES_PER_GPS_CYCLE, 10);
+		timer_sleep(2500);
 	}
 }
 
@@ -153,34 +132,5 @@ void assert_failed(uint8_t *file, uint32_t line)
 }
 
 #endif
-
-typedef enum {
-	GPIO_RCC_A = 0,
-	GPIO_RCC_B = 1,
-	GPIO_RCC_C = 2,
-	GPIO_RCC_D = 3,
-	GPIO_RCC_E = 4,
-	GPIO_RCC_H = 7
-} GPIO_RCC_t;
-
-void enableGPIOClock(GPIO_RCC_t which) {
-	SET_BIT(RCC->IOPENR, 1 << which);
-
-	/* Delay after an RCC peripheral clock enabling */
-	uint32_t tmpreg;
-	do {
-		tmpreg = READ_BIT(RCC->IOPENR, 1 << which);
-	} while (tmpreg == 0);
-}
-
-void disableGPIOClock(GPIO_RCC_t which) {
-	CLEAR_BIT(RCC->IOPENR, 1 << which);
-}
-
-void sleepSpeedConfig(void) {
-	RCC->CR = 0;
-	RCC->CFGR = (RCC->CFGR & ~RCC_CFGR_SW) | RCC_CFGR_SW_MSI | 7U << 24 | // Use MSI, output LSE to MCO
-			0;
-}
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

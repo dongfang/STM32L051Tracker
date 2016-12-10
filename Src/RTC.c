@@ -6,6 +6,7 @@
  */
 #include "stm32l0xx.h"
 #include "Types.h"
+#include "Trace.h"
 
 #include "RTC.h"
 
@@ -24,7 +25,8 @@ void RTC_init() {
 	// RTC->CR |= RTC_CR_BYPSHAD;
 
 	// Set up MCO if we need that
-	SET_BIT(RCC->IOPENR, RCC_IOPENR_GPIOAEN);
+	// SET_BIT(RCC->IOPENR, RCC_IOPENR_GPIOAEN);
+	enableGPIOClock(RCC_IOPENR_GPIOAEN);
 	GPIOA->MODER = (GPIOA->MODER & ~(3 << (2 * 8))) | 2 << (2 * 8);
 	GPIOA->AFR[1] = (GPIOA->AFR[1] & ~(15 << (4 * 0))) | 0;
 
@@ -42,6 +44,7 @@ void RTC_init() {
 }
 
 void RTC_deinit() {
+	// Just set write protect and stop APB clock.
 	CLEAR_BIT(PWR->CR, PWR_CR_DBP);
 	RCC->APB1ENR &= ~RCC_APB1ENR_PWREN;
 }
@@ -203,3 +206,5 @@ void RTC_backupExperiment() {
 void RTC_IRQHandler() {
 	trace_printf("Some RTC IRQ fired %d\n", RTC->ISR);
 }
+
+

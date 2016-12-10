@@ -1,11 +1,11 @@
 #include <inttypes.h>
 #include "GPS.h"
+#include "Types.h"
 #include <math.h>
 #include "stm32l0xx.h"
 #include "Setup.h"
 
-NMEA_TimeInfo_t GPSTime;
-uint8_t GPSDate;
+DateTime_t GPSDateTime;
 NMEA_CRS_SPD_Info_t GPSCourseSpeed;
 Location_t GPSPosition;
 NMEA_StatusInfo_t GPSStatus;
@@ -17,6 +17,8 @@ Location_t lastNonzero3DPosition; // __attribute__((section (".noinit")));
 
 Position_t lastOdometeredPosition __attribute__((section (".noinit")));
 double lastOdometeredPositionCheck __attribute__((section (".noinit")));
+
+// TODO move to eeprom
 double odometer_nm __attribute__((section (".noinit")));
 float speed_kts;
 
@@ -39,13 +41,13 @@ void onNewGPSData() {
 		if (GPSPosition.alt != 0) {
 			lastNonzero3DPosition = GPSPosition;
 
-			int timeSinceLastAltitude = timeAfter_seconds(&lastAltitudeTime, &GPSTime.time);
-			if (timeSinceLastAltitude >= 120) {
-				lastAltitudeTime = GPSTime.time;
+			// calculate climb rate.
+			int timeSinceLastAltitude = timeAfter_seconds(&lastAltitudeTime, &GPSDateTime.time);
+			if (timeSinceLastAltitude >= 300) {
+				lastAltitudeTime = GPSDateTime.time;
 				float dAltitude = GPSPosition.alt - lastAltitude;
 				lastAltitude = GPSPosition.alt;
 				climbRate = dAltitude * 60.0 / timeSinceLastAltitude;
-//				trace_printf("dAlt is %d, dt is %d, climb rate: %d\n", (int)dAltitude, timeSinceLastAltitude, (int)climbRate);
 			}
 		}
 	}
@@ -94,13 +96,13 @@ uint8_t GPS_waitForTimelock(uint32_t maxTime) {
 		// trace_printf("now %02d:%02d:%02d tvalid %d, dvalid %d\n", GPSTime.time.hours, GPSTime.time.minutes, GPSTime.time.seconds, GPSTime.time.valid, GPSTime.date.valid);
 		timer_sleep(100);
 	} while ((!GPS_isDateTimeValid()
-			|| (GPSTime.time.hours == 0 && GPSTime.time.minutes == 0
-					&& GPSTime.time.seconds == 0)) && !timer_elapsed(maxTime));
+			|| (GPSDateTime.time.hours == 0 && GPSDateTime.time.minutes == 0
+					&& GPSDateTime.time.seconds == 0)) && !timer_elapsed(maxTime));
 	LED_PORT->BSRR = LED_OFF; // LED
 	GPS_getData();
 	if (GPS_isDateTimeValid()) {
-		trace_printf("GPS time success: %02d:%02d:%02d\n", GPSTime.time.hours,
-				GPSTime.time.minutes, GPSTime.time.seconds);
+		trace_printf("GPS time success: %02d:%02d:%02d\n", GPSDateTime.time.hours,
+				GPSDateTime.time.minutes, GPSDateTime.time.seconds);
 		return 1;
 	} else {
 		trace_printf("GPS wait for timelock: FAIL\n");

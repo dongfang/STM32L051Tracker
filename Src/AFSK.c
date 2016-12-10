@@ -23,7 +23,8 @@ void AFSK_init() {
 
 	// Use Timer2 CH1 for PWM gen.
 	SET_BIT(RCC->APB1ENR, RCC_APB1ENR_TIM2EN);
-	SET_BIT(RCC->IOPENR, RCC_IOPENR_GPIOBEN);
+	// SET_BIT(RCC->IOPENR, RCC_IOPENR_GPIOBEN);
+	enableGPIOClock(RCC_IOPENR_GPIOBEN);
 	SET_BIT(RCC->AHBENR, RCC_AHBENR_DMAEN);
 
 	// Set PB3 (I think) to alternate function

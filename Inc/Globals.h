@@ -9,6 +9,8 @@
 #define GLOBALS_H_
 
 #include "Types.h"
+#include "NVM.h"
+#include "GPS.h"
 
 //extern NMEA_TimeInfo_t GPSTime;
 //extern NMEA_CRS_SPD_Info_t GPSCourseSpeed;
@@ -25,8 +27,16 @@ extern boolean latestAPRSCores[12];	 // 12 is sufficently large for the world ma
 extern char scheduleName;
 
 extern float temperature;
+extern int8_t simpleTemperature;
 extern float batteryVoltage;
 extern float solarVoltage;
 extern float speed_kts;
+
+extern const LogRecord_t flashdata[NUM_LOG_RECORDS];
+extern const LogRecordIndex_t storedRecordIndex;
+extern const PLLCtrlCalibration_t pllCtrlCalibration;
+extern const FlightLog_t flightLog;
+extern const CalibrationRecord_t calibrationByTemperatureRanges[];
+
 
 #endif /* GLOBALS_H_ */

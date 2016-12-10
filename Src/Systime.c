@@ -5,6 +5,7 @@
  *      Author: dongfang
  */
 #include "stm32l0xx.h"
+#include "Systime.h"
 
 // This one, we can leave inited to zero (bss).
 volatile uint32_t systime;
@@ -30,4 +31,14 @@ void timer_sleep(uint32_t time) {
 			__WFI();
 		}
 	} while (diff > 0);
+}
+
+static int32_t mark;
+void timer_mark() {
+	mark = systime;
+}
+
+boolean timer_elapsed(uint32_t millis) {
+	int32_t diff = (mark + millis) - systime;
+	return diff >= 0;
 }
