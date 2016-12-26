@@ -112,9 +112,9 @@ static void beginSendUBXMessage(UBX_MESSAGE* message) {
 	currentSendingIndex = -2;
 	currentChecksumA = 0;
 	currentChecksumB = 0;
-	// __HAL_UART_ENABLE_IT(&hlpuart1, UART_IT_TXE);
-	// USART2->CR1 |= USART_CR1_TXEIE;
-	// should not be needed to do: 		GPS_transmit();
+
+	// This should cause an immediate interrupt...
+	USART2->CR1 |= USART_CR1_TXEIE;
 }
 
 void USART2_IRQHandler() {
@@ -122,6 +122,8 @@ void USART2_IRQHandler() {
 	if (stat & USART_ISR_RXNE) {
 		uint16_t rxd = USART2->RDR;
 		nmea_parse(rxd);
+	} if (stat & USART_ISR_TXE) {
+		GPS_transmit();
 	}
 }
 
