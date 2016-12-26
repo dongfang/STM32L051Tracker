@@ -212,8 +212,8 @@ int main(void) {
 			volatile Time_t time;
 			do {
 				//__WFI();
-				//RTC_read(&time);
-				volatile uint32_t cr = RTC->CR;// |= RTC_CR_ALRAE | RTC_CR_ALRAIE
+				RTC_read(&time);
+				// volatile uint32_t cr = RTC->CR;// |= RTC_CR_ALRAE | RTC_CR_ALRAIE
 				isr = RTC->ISR & (RTC_ISR_WUTF | RTC_ISR_ALRAF | RTC_ISR_ALRBF);
 				// } while (!isr);
 			} while (time.hours != alarmTime.hours
