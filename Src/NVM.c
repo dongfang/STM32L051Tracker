@@ -5,45 +5,19 @@
  *      Author: dongfang
  */
 #include "stm32l0xx.h"
-#include "Trace.h"
 #include "NVM.h"
 #include "Calibration.h"
+#include "Globals.h"
+#include "RTC.h"
+#include "APRS.h"
 
-// 0x0808 0000 - 0x0808 07FF
-// aka
-// #define DATA_EEPROM_BASE       ((uint32_t)0x08080000U) /*!< DATA_EEPROM base address in the alias region */
-// #define DATA_EEPROM_END        ((uint32_t)0x080807FFU) /*!< DATA EEPROM end address in the alias region */
+__attribute__((section(".flashnvm")))         const volatile LogRecord_t flashdata[NUM_LOG_RECORDS];
+__attribute__((section(".eemem")))            const volatile LogRecordIndex_t storedRecordIndex;
+__attribute__((section(".eemem")))            const volatile PLLTrimCalibration_t pllTrimCalibration;
+__attribute__((section(".eemem")))            const volatile CalibrationRecord_t calibrationByTemperatureRanges[NUM_TEMPERATURE_RANGES];
+__attribute__((section(".eemem")))            const volatile Odometer_t odometer;
 
-__attribute__((section(".flashnvm")))  const LogRecord_t flashdata[NUM_LOG_RECORDS];
-__attribute__((section(".eemem")))    const LogRecordIndex_t storedRecordIndex;
-__attribute__((section(".eemem")))    const PLLCtrlCalibration_t pllCtrlCalibration;
-__attribute__((section(".eemem")))    const FlightLog_t flightLog;
-__attribute__((section(".eemem")))    const CalibrationRecord_t calibrationByTemperatureRanges[NUM_TEMPERATURE_RANGES];
-
-// Calibration record.
-// System status (blank, calibrated0..calibratedn, error)
-
-/*
- void eepromExperiment() {
- uint32_t alreadyRunning = RCC->AHBENR & RCC_AHBENR_MIFEN;
- RCC->AHBENR |= RCC_AHBENR_MIFEN;
-
- uint32_t old = *((uint32_t*) DATA_EEPROM_BASE);
-
- // Unlock eeprom
- FLASH->PEKEYR = 0x89ABCDEF;
- FLASH->PEKEYR = 0x02030405;
- uint32_t unlocked = ~(FLASH->PECR & FLASH_PECR_PELOCK);
-
- FLASH->PECR &= ~(FLASH_PECR_ERASE | FLASH_PECR_FIX); // no need to erase
- *((uint32_t*) DATA_EEPROM_BASE) = old + 1;
-
- RCC->AHBENR = (RCC_AHBENR_MIFEN & ~RCC_AHBENR_MIFEN) | alreadyRunning;
-
- // Lock again.
- FLASH->PECR |= FLASH_PECR_PELOCK;
- }
- */
+__attribute__((section(".noinit"))) static uint32_t rand;
 
 void storeToEEPROM(uint32_t* const target, const uint32_t* const source,
 		size_t numWords) {
@@ -53,7 +27,7 @@ void storeToEEPROM(uint32_t* const target, const uint32_t* const source,
 	// Unlock eeprom
 	FLASH->PEKEYR = 0x89ABCDEF;
 	FLASH->PEKEYR = 0x02030405;
-	uint32_t unlocked = ~(FLASH->PECR & FLASH_PECR_PELOCK);
+	uint32_t unlocked = FLASH->PECR & FLASH_PECR_PELOCK;
 
 	FLASH->PECR &= ~(FLASH_PECR_ERASE | FLASH_PECR_FIX); // no need to erase
 	for (size_t i = 0; i < numWords; i++) {
@@ -76,10 +50,19 @@ void NVM_writeCalibrationRecord(CalibrationRecord_t* const record,
 			(uint32_t*) record, (sizeof(CalibrationRecord_t) + 3) / 4);
 }
 
-/* USER CODE END 0 */
+void NVM_WritePLLTrimCalibration(PLLTrimCalibration_t* cal) {
+	storeToEEPROM((uint32_t*) &pllTrimCalibration, (uint32_t*) cal,
+			(sizeof(PLLTrimCalibration_t) + 3) / 4);
+}
 
+void NVM_WriteOdometer(Odometer_t* odo) {
+	storeToEEPROM((uint32_t*) &odometer, (uint32_t*) odo,
+			(sizeof(Odometer_t) + 3) / 4);
+}
+
+// If we need a function in RAM this is how:
 // __attribute__((section(".RAMtext")))
-void storeLogRecord(uint16_t i, LogRecord_t* const data) {
+static void NVM_storeLogRecord(uint16_t i, LogRecord_t* const data) {
 	uint32_t alreadyRunning = RCC->AHBENR & RCC_AHBENR_MIFEN;
 	RCC->AHBENR |= RCC_AHBENR_MIFEN;
 
@@ -107,7 +90,7 @@ void storeLogRecord(uint16_t i, LogRecord_t* const data) {
 	 while ((FLASH->SR & FLASH_SR_EOP) == 0)
 	 ;
 	 */
-	uint32_t* start = (uint32_t*) (flashdata) + i;
+	uint32_t* start = (uint32_t*) (flashdata + i);
 	uint32_t* from = (uint32_t*) (data);
 
 	//FPRG = 1, PRG = 1.
@@ -128,42 +111,78 @@ void storeLogRecord(uint16_t i, LogRecord_t* const data) {
 	FLASH->PECR |= FLASH_PECR_PELOCK;
 }
 
-/* not needed, really. Just access directly.
- LogRecord_t* const logRecord(uint16_t i) {
- return &flashdata[i];
- }
- */
+void recordFlightLog() {
+	uint32_t alreadyRunning = RCC->AHBENR & RCC_AHBENR_MIFEN;
+	RCC->AHBENR |= RCC_AHBENR_MIFEN;
 
-/*
- void HALFlashExperiment() {
- FLASH_OBProgramInitTypeDef pOBInit;
+	Time_t now;
+	RTC_read(&now);
 
- HAL_FLASH_OB_Unlock();
- HAL_FLASHEx_OBGetConfig(&pOBInit);
+	if (now.hours != storedRecordIndex.lastLogTime.hours) {
+		LogRecordIndex_t tmpIndex = storedRecordIndex;
+		// TODO check if valid and reset if not.
 
- trace_printf("Write protect: %d\n", pOBInit.WRPState);
- trace_printf("Write protect sector1: %d\n", pOBInit.WRPSector);
- trace_printf("Write protect:sector2: %d\n", pOBInit.WRPSector2);
+		tmpIndex.lastLogTime = now;
+		LogRecord_t record;
+		record.lat = lastNonzeroPosition.lat * 1E7;
+		record.lon = lastNonzeroPosition.lon * 1E7;
+		record.alt = lastNonzeroPosition.alt;
+		DateTime_t datetime;
+		record.compactedDateTime = compactDateTime(&GPSDateTime);
+		// record.numHF = 123;
+		record.speed_kts = speed_kts;
+		record.temperature = temperature;
+		record.checksum =
+				record.lat + record.lon + record.alt + record.compactedDateTime + record.speed_kts + record.temperature + 123;
 
- // HAL_FLASHEx_OBProgram(&pOBInit);
- HAL_FLASH_OB_Lock();
+		NVM_storeLogRecord(tmpIndex.headIdx, &record);
 
- trace_printf("Old flash value was %d\n", flashdata[0]);
- HAL_FLASH_Unlock();
- // FLASH_ErasePage((uint32_t)&flashdata);
- HAL_StatusTypeDef status = HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, (uint32_t)&flashdata, 0x12345678);
- trace_printf("Status: %d\n", status);
- trace_printf("New flash value was %d\n", ((volatile uint32_t*)flashdata)[0]);
- HAL_FLASH_Lock();
- }
- */
+		tmpIndex.headIdx++;
+		if (tmpIndex.headIdx == NUM_LOG_RECORDS)
+			tmpIndex.headIdx = 0;
+		if (tmpIndex.headIdx == tmpIndex.tailIdx) {
+			// bang, we are full.
+			tmpIndex.tailIdx++;
+			if (tmpIndex.tailIdx == NUM_LOG_RECORDS)
+				tmpIndex.tailIdx = 0;
+		}
+		storeToEEPROM((uint32_t*) &storedRecordIndex, (uint32_t*)&tmpIndex, (sizeof(LogRecordIndex_t) + 3) / 4);
+	}
 
-uint8_t uncompressDateHoursMinutes(LogRecord_t* record, Time_t* time) {
-	return 0;
+	RCC->AHBENR = (RCC_AHBENR_MIFEN & ~RCC_AHBENR_MIFEN) | alreadyRunning;
 }
-uint16_t uncompressBatteryVoltageTomV(LogRecord_t* record) {
-	return 0;
+
+uint32_t random(uint32_t seed) {
+	Time_t now;
+	RTC_read(&now);
+	return now.hours + now.minutes + now.seconds + systime + seed;
 }
-uint16_t uncompressSolarVoltageTomV(LogRecord_t* record) {
-	return 0;
+
+uint16_t playbackFlightLog(APRS_Band_t band, uint32_t frequency) {
+	uint32_t alreadyRunning = RCC->AHBENR & RCC_AHBENR_MIFEN;
+	RCC->AHBENR |= RCC_AHBENR_MIFEN;
+	volatile int16_t n = storedRecordIndex.headIdx - storedRecordIndex.tailIdx;
+	if (n) {
+		if (n < 0)
+			n += NUM_LOG_RECORDS;
+		currentTextMessage[0] = '+';
+		char* buf = currentTextMessage + 1;
+		uint16_t linearIdx = 0;
+		rand += temperature * VDDa * 1024;
+		for (uint8_t i = 0; i < n && linearIdx < n; i++) {
+			if (buf >= currentTextMessage + sizeof(currentTextMessage) - 20)
+				break;
+			uint16_t span = ((n - linearIdx)/2 + 1);
+			linearIdx += ((rand = random(rand)) % span);
+			uint16_t circularIdx = linearIdx + storedRecordIndex.tailIdx;
+			linearIdx++; // ensure SOME progress.
+			if (circularIdx >= NUM_LOG_RECORDS)
+				circularIdx -= NUM_LOG_RECORDS;
+			buf = APRS_marshallFlightLogMessage(flashdata + circularIdx, buf);
+		}
+		timer_sleep(500);
+		APRS_transmitMessage(band, TEXT_MESSAGE, frequency);
+	}
+	RCC->AHBENR = (RCC_AHBENR_MIFEN & ~RCC_AHBENR_MIFEN) | alreadyRunning;
+	return n;
 }

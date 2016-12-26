@@ -1,8 +1,6 @@
 #ifndef CDCE913_H_
 #define CDCE913_H_
 
-#define CDCE913_SELFCALIBRATION_DIVISION 1000
-
 // Settings set for the CDCE(L)913
 typedef struct {
   double mul;	// Frequency multiplication given by this setting
@@ -18,8 +16,9 @@ typedef struct {
   uint8_t trim;
 } CDCE913_PLL_Setting_t;
 
-#define PLL_MIN_TRIM_INDEX_VALUE 2
-#define PLL_MAX_TRIM_INDEX_VALUE 20
+#define PLL_MIN_TRIM 4
+#define PLL_MAX_TRIM 20
+#define PLL_CENTER_TRIM ((PLL_MIN_TRIM+PLL_MAX_TRIM)/2)
 
 extern const int16_t PLL_XTAL_TRIM_PP10M[];
 
@@ -33,14 +32,8 @@ typedef enum {
 	CDCE913_OutputMode_XO_PASSTHROUGH
 } CDCE913_OutputMode_t;
 
-#define ABS_MIN_PLL_TRIM 0
-#define ABS_MAX_PLL_TRIM 20
-
 #define PLL_XTAL_NOMINAL_FREQUENCY 26E6
-#define PREFERRED_MIN_PLL_TRIM 2
-#define PREFERRED_MAX_PLL_TRIM 18
 
 uint8_t CDCE913_read(uint8_t);
-void PLL_setDirectModeWithDivision(uint8_t trim, uint16_t pdiv);
 
 #endif /* CDCE913_H_ */

@@ -1,20 +1,18 @@
 #include <string.h>
 #include <math.h>
-#include "stm32l051xx.h"
+#include "stm32l0xx.h"
 #include "WSPR.h"
 #include "GPS.h"
 #include "PLL.h"
 #include "Globals.h"
 #include "Types.h"
-#include "Trace.h"
 #include "Setup.h"
-#include "Calibration.h"
 
 static uint8_t losslessCompressedBuf[11];
-uint8_t convolutionalBuf[21];
-uint8_t interleavedbuf[21];
-uint8_t symbolList[162 / 4 + 1];
-uint8_t nextWSPRMessageTypeIndex;
+uint8_t convolutionalBuf[21]  __attribute__((section (".noinit")));
+uint8_t interleavedbuf[21]  __attribute__((section (".noinit")));
+uint8_t symbolList[162 / 4 + 1]  __attribute__((section (".noinit")));
+uint8_t nextWSPRMessageTypeIndex  __attribute__((section (".noinit")));
 
 const uint32_t WSPR_FREQUENCIES[] = {10140200, 28126100};
 
@@ -40,7 +38,7 @@ static uint8_t encode(char c) {
 		return 10 + c - 'a';
 	if (c == ' ')
 		return 36;
-	trace_printf("Error! Unhandled char in callsign '%c'\n", c);
+	// trace_printf("Error! Unhandled char in callsign '%c'\n", c);
 	return -1;
 }
 
@@ -52,7 +50,7 @@ static uint8_t encodeCharOnly(char c) {
 		return c - 'a';
 	if (c == ' ')
 		return 26;
-	trace_printf("Error! Unhandled char in callsign '%c'\n", c);
+	// trace_printf("Error! Unhandled char in callsign '%c'\n", c);
 	return -1;
 }
 
@@ -279,7 +277,7 @@ void positionAs4DigitMaidenhead(double lat, double lon, char* target) {
 }
 
 void currentPositionAs4DigitMaidenhead(char* target) {
-	positionAs4DigitMaidenhead(GPSPosition.lat, GPSPosition.lon, target);
+	positionAs4DigitMaidenhead(lastNonzeroPosition.lat, lastNonzeroPosition.lon, target);
 	target[4] = 0;
 }
 
@@ -383,15 +381,15 @@ void prepareType3Transmission(uint8_t power, WSPR_MESSAGE_TYPE fake) {
     break;
     */
     
-  default:
-    trace_printf("Unknown fake-type: %u\n", fake);
+  // default:
+    // trace_printf("Unknown fake-type: %u\n", fake);
   }
 
   encodeType3Message(maidenhead6_fake, power);
   completeMessage();
 }
 
-uint8_t getWSPRSymbol(uint8_t i) {
+uint8_t WSPR_getSymbol(uint8_t i) {
   uint8_t idx = i / 4;
   uint8_t shift = i & 3;
   uint8_t sym = symbolList[idx] >> (6 - shift * 2);
@@ -416,7 +414,7 @@ static uint8_t fake_dBm(float voltage) {
 
 void prepareWSPRMessage(WSPR_MESSAGE_TYPE messageType, float voltage) {
     uint8_t power = fake_dBm(voltage);
-    trace_printf("type: %d\n", messageType);
+    // trace_printf("type: %d\n", messageType);
   switch (messageType) {
   case TYPE1:
     prepareType1Transmission(power);
@@ -428,34 +426,6 @@ void prepareWSPRMessage(WSPR_MESSAGE_TYPE messageType, float voltage) {
 }
 
 void doWSPR(WSPRBand_t band) {
-	// CalibrationRecord_t* currentCalibration = getCalibration(simpleTemperature);
-	uint32_t expectedOscillatorFrequency =
-			getCalibration()->transmitterOscillatorFrequencyAtDefaultTrim;
-
-	PLL_Setting_t pllSetting;
-
-	double maxError = 10E-6;
-	// boolean foundSetting = false;
-
-	while (maxError < 100E-6) {
-		if (PLL_bestPLLSetting(
-				expectedOscillatorFrequency,
-				WSPR_FREQUENCIES[band], maxError, &pllSetting)) {
-
-			trace_printf("Using fOsc=%d, N=%d, M=%d, trim=%d error=%d\n",
-					expectedOscillatorFrequency,
-					pllSetting.N, pllSetting.M, pllSetting.trim,
-					(int) (maxError * 10E6));
-
-			// foundSetting = true;
-			break;
-		} else {
-			trace_printf(
-					"NO feasible PLL setting in range! Should really not happen. Anyway, we try again with more tolerance.\n");
-			maxError += 25E-6;
-		}
-	}
-
 	uint8_t nextWSPRMessageType;
 
 	if (lastNonzero3DPosition.alt < LOWALT_THRESHOLD) {
@@ -470,9 +440,9 @@ void doWSPR(WSPRBand_t band) {
 		nextWSPRMessageType = WSPR_SCHEDULE[nextWSPRMessageTypeIndex];
 	}
 
-	prepareWSPRMessage(nextWSPRMessageType, batteryVoltage);
+	prepareWSPRMessage(nextWSPRMessageType, vBattery);
 	nextWSPRMessageTypeIndex++;
-	WSPR_Transmit(THIRTY_M, &pllSetting);
+	WSPR_Transmit(THIRTY_M);
 
 	// Recurse, do it again if we sent the rather uninformative TYPE1.
 	// if (nextWSPRMessageType == TYPE1) {

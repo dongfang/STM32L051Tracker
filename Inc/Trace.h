@@ -5,7 +5,7 @@
 
 #ifndef DIAG_TRACE_H_
 #define DIAG_TRACE_H_
-
+/*
 // ----------------------------------------------------------------------------
 
 #include <unistd.h>
@@ -141,5 +141,6 @@ trace_dump_args(int argc __attribute__((unused)),
 #endif // defined(TRACE)
 
 // ----------------------------------------------------------------------------
+*/
 
 #endif // DIAG_TRACE_H_

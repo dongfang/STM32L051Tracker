@@ -23,13 +23,14 @@ void AFSK_init() {
 
 	// Use Timer2 CH1 for PWM gen.
 	SET_BIT(RCC->APB1ENR, RCC_APB1ENR_TIM2EN);
-	// SET_BIT(RCC->IOPENR, RCC_IOPENR_GPIOBEN);
-	enableGPIOClock(RCC_IOPENR_GPIOBEN);
+	SET_BIT(RCC->IOPENR, RCC_IOPENR_GPIOBEN);
 	SET_BIT(RCC->AHBENR, RCC_AHBENR_DMAEN);
+
+	RCC->APB2RSTR |= RCC_APB2RSTR_TIM22RST;
+	RCC->APB2RSTR &= ~RCC_APB2RSTR_TIM22RST;
 
 	// Set PB3 (I think) to alternate function
 	GPIOB->MODER = (GPIOB->MODER & ~(3 << (2 * 3))) | 2 << (2 * 3);
-	// GPIOB->MODER = (GPIOB->MODER & ~(3 << (2 * 3))) | 1 << (2 * 3);
 
 	// TIM2 Ch2 is AF2
 	GPIOB->AFR[0] = (GPIOB->AFR[0] & ~(15 << (4 * 3))) | (2 << (4 * 3));
@@ -77,13 +78,13 @@ void AFSK_init() {
 
 	TIM22->DIER = TIM_DIER_UIE;
 	NVIC_SetPriority(TIM22_IRQn, 0);
-	// AFSK_subtrim = 0;
 	NVIC_EnableIRQ(TIM22_IRQn);
 
 	// Enable DMA
 	DMA1_Channel2->CCR |= DMA_CCR_EN;
 
-	// Enable Timer22
+	// Enable Timer22, and make sure updates are not disabled.
+	TIM22->CR1 &= ~TIM_CR1_UDIS;
 	TIM22->CR1 |= TIM_CR1_CEN | TIM_CR1_DIR;
 }
 
@@ -95,11 +96,13 @@ void AFSK_shutdown() {
 
 	NVIC_DisableIRQ(TIM22_IRQn);
 	TIM22->DIER &= ~TIM_DIER_UIE;
+
 	RCC->APB2ENR &= ~RCC_APB2ENR_TIM22EN;
 
 	DMA1_Channel2->CCR &= ~DMA_CCR_EN;
 	RCC->AHBENR &= ~RCC_AHBENR_DMAEN;
 
+	TIM6->DIER &= ~TIM_DIER_UDE;
 	TIM6->CR1 &= ~TIM_CR1_CEN;
 	RCC->APB1ENR &= ~RCC_APB1ENR_TIM6EN;
 

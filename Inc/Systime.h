@@ -10,8 +10,6 @@
 
 #include "Types.h"
 
-uint32_t systimeMillis();
-void timer_mark();
-boolean timer_elapsed(uint32_t millis);
+void timer_sleep(uint32_t time);
 
 #endif /* SYSTIME_H_ */

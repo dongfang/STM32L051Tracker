@@ -1,37 +1,29 @@
-#include <inttypes.h>
 #include "GPS.h"
 #include "Types.h"
 #include <math.h>
-#include "stm32l0xx.h"
 #include "Setup.h"
+#include "LED.h"
+#include "RTC.h"
+#include "ADC.h"
+#include "NVM.h"
+#include "Globals.h"
+#include "Systime.h"
+#include "stm32l0xx.h"
 
-DateTime_t GPSDateTime;
-NMEA_CRS_SPD_Info_t GPSCourseSpeed;
-Location_t GPSPosition;
-NMEA_StatusInfo_t GPSStatus;
+DateTime_t GPSDateTime __attribute__((section (".noinit")));
+NMEA_CRS_SPD_Info_t GPSCourseSpeed __attribute__((section (".noinit")));
+Location_t GPSPosition __attribute__((section (".noinit")));
+NMEA_StatusInfo_t GPSStatus __attribute__((section (".noinit")));
 
-uint16_t lastGPSFixTime;
+uint16_t lastGPSFixTime __attribute__((section (".noinit")));
 
 Location_t lastNonzeroPosition; // __attribute__((section (".noinit")));
 Location_t lastNonzero3DPosition; // __attribute__((section (".noinit")));
 
-Position_t lastOdometeredPosition __attribute__((section (".noinit")));
-double lastOdometeredPositionCheck __attribute__((section (".noinit")));
-
-// TODO move to eeprom
-double odometer_nm __attribute__((section (".noinit")));
 float speed_kts;
-
-Time_t lastOdometerTime __attribute__((section (".noinit")));
-
 Time_t lastAltitudeTime;
 float lastAltitude;
 float climbRate;
-
-void debugTime(const char* text, Time_t* time) {
-	trace_printf("%s said %02u:%02u:%02u\n", text, time->hours, time->minutes,
-			time->seconds);
-}
 
 // Do some data event processing when data has arrived.
 void onNewGPSData() {
@@ -42,7 +34,8 @@ void onNewGPSData() {
 			lastNonzero3DPosition = GPSPosition;
 
 			// calculate climb rate.
-			int timeSinceLastAltitude = timeAfter_seconds(&lastAltitudeTime, &GPSDateTime.time);
+			int timeSinceLastAltitude = timeAfter_seconds(&lastAltitudeTime,
+					&GPSDateTime.time);
 			if (timeSinceLastAltitude >= 300) {
 				lastAltitudeTime = GPSDateTime.time;
 				float dAltitude = GPSPosition.alt - lastAltitude;
@@ -59,15 +52,15 @@ void flashNumSatellites(uint8_t numSatellites) {
 	boolean odd = (cnt & 1) != 0;
 
 	if (odd) {
-		LED_PORT->BSRR = LED_OFF; // LED
+		LED_off();
 	} else {
 		if (cnt <= numSatellites * 2) {
-			LED_PORT->BSRR = LED_ON; // LED
+			LED_on();
 		}
 	}
 
 	cnt++;
-	if (cnt >= 25)
+	if (cnt >= 20)
 		cnt = 0;
 }
 
@@ -78,138 +71,148 @@ extern boolean GPS_isPositionValid();
 extern void GPS_getData();
 extern void GPS_invalidateNumSatellites();
 extern uint8_t GPS_numberOfSatellites();
-extern void GPS_powerOn();
 extern void GPS_powerOff();
 // Implementation of stopListening is elsewhere. It depends on the IO type to GPS.
 extern void GPS_stopListening();
 // Implementation of GPS_kill is elsewhere. It depends on the power control mechanism.
 
-uint8_t GPS_waitForTimelock(uint32_t maxTime) {
-	timer_mark();
-	GPS_invalidateDateTime();
+static uint32_t gpsStartTime;
 
-	trace_printf("Waiting for GPS time\n");
+void GPSTimeoutStopFunctionInit() {
+	gpsStartTime = systime;
+}
+
+uint8_t GPSTimeoutStopFunction(void* limitptr) {
+	uint32_t limit = *((uint32_t*) limitptr);
+	return systime > gpsStartTime + limit;
+}
+
+void GPSVoltageStopFunctionInit() {
+	// we can, at least currently, assume it was already done.
+	// ADC_init();
+}
+
+uint8_t GPSVoltageStopFunction(void* limitptr) {
+	float voltageNow = ADC_measureBatteryVoltage();
+	vBattery = voltageNow;
+	float limit = *((float*) limitptr);
+	return voltageNow < limit;
+}
+
+uint8_t GPS_waitForTimelock(GPSStopFunctionInit_t* stopInit,
+		GPSStopFunction_t* stopFunction, void* limit) {
+	stopInit();
+	GPS_invalidateDateTime();
 
 	do {
 		GPS_getData();
 		flashNumSatellites(GPSStatus.numberOfSatellites);
 		// trace_printf("now %02d:%02d:%02d tvalid %d, dvalid %d\n", GPSTime.time.hours, GPSTime.time.minutes, GPSTime.time.seconds, GPSTime.time.valid, GPSTime.date.valid);
-		timer_sleep(100);
+		timer_sleep(250);
 	} while ((!GPS_isDateTimeValid()
 			|| (GPSDateTime.time.hours == 0 && GPSDateTime.time.minutes == 0
-					&& GPSDateTime.time.seconds == 0)) && !timer_elapsed(maxTime));
-	LED_PORT->BSRR = LED_OFF; // LED
+					&& GPSDateTime.time.seconds == 0)) && !stopFunction(limit));
+	LED_off();
 	GPS_getData();
 	if (GPS_isDateTimeValid()) {
-		trace_printf("GPS time success: %02d:%02d:%02d\n", GPSDateTime.time.hours,
-				GPSDateTime.time.minutes, GPSDateTime.time.seconds);
+		//trace_printf("GPS time success: %02d:%02d:%02d\n", GPSDateTime.time.hours,
+		//		GPSDateTime.time.minutes, GPSDateTime.time.seconds);
 		return 1;
 	} else {
-		trace_printf("GPS wait for timelock: FAIL\n");
+		// trace_printf("GPS wait for timelock: FAIL\n");
 		return 0;
 	}
 }
 
-boolean GPS_waitForPosition(uint32_t maxTime) {
-	timer_mark();
-
+boolean GPS_waitForPosition(GPSStopFunctionInit_t* stopInit,
+		GPSStopFunction_t* stopFunction, void* limit) {
+	stopInit();
 	GPS_invalidatePosition();
-
 	do {
 		GPS_getData();
 		flashNumSatellites(GPSStatus.numberOfSatellites);
-		timer_sleep(100);
-	} while (!GPS_isPositionValid() && !timer_elapsed(maxTime));
-	LED_PORT->BSRR = LED_OFF; // LED
+		timer_sleep(250);
+	} while (!GPS_isPositionValid() && !stopFunction(limit));
+	LED_off();
 	GPS_getData();
-	if (GPS_isPositionValid()) {
-		trace_printf("Got GPS position: %d, %d, %d\n",
-				(int) (GPSPosition.lat * 1.0E7),
-				(int) (GPSPosition.lon * 1.0E7), (int) GPSPosition.alt);
-	} else {
-		trace_printf(
-				"GPS wait for position FAIL: valid:%c, fixMode:%u numSats:%u\n",
-				GPSPosition.valid, GPSStatus.fixMode,
-				GPSStatus.numberOfSatellites);
-	}
 	return GPSPosition.valid == 'A';
 }
 
-static void GPS_debugGPSPosition() {
-#ifdef TRACE_GPS
-	trace_printf("GPS pos: lat %d, lon %d, alt %d, valid %c, fix %d, sat %d\n",
-			(int) (GPSPosition.lat * 1000), (int) (GPSPosition.lon * 1000),
-			(int) (GPSPosition.alt), GPSPosition.valid, GPSStatus.fixMode,
-			GPSStatus.numberOfSatellites);
-#endif
+uint16_t odometer_checksum(Odometer_t* odo) {
+	/*
+	 Position_t lastOdometeredPosition;
+	 Time_t lastOdometerTime;
+	 double odometer_nm;
+	 uint16_t checksum;
+	 */
+	return (uint16_t) (12345 + odo->lastOdometeredPosition.lat
+			+ 3 * odo->lastOdometeredPosition.lon + 7 * odo->odometer_nm);
 }
 
-boolean GPS_waitForPrecisionPosition(uint32_t maxTime) {
-	timer_mark();
+boolean GPS_waitForPrecisionPosition(GPSStopFunctionInit_t* stopInit,
+		GPSStopFunction_t* stopFunction, void* limit) {
+	stopInit();
 	GPS_invalidateNumSatellites();
-	boolean timeout;
-	uint8_t debugPrintCnt = 0;
+	boolean timedout;
 	do {
 		GPS_getData();
 		flashNumSatellites(GPSStatus.numberOfSatellites);
-		timer_sleep(100);
-		debugPrintCnt++;
-		if (debugPrintCnt == 10) {
-			debugPrintCnt = 0;
-			GPS_debugGPSPosition();
-		}
+		timer_sleep(250);
 	} while ((GPSPosition.valid != 'A'
 			|| (GPS_numberOfSatellites() < REQUIRE_HIGH_PRECISION_NUM_SATS)
 			|| (REQUIRE_HIGH_PRECISION_ALTITUDE && GPSPosition.alt == 0)
 			|| GPSStatus.fixMode < REQUIRE_HIGH_PRECISION_FIXLEVEL)
-			&& !(timeout = timer_elapsed(maxTime)) && timer_sleep(100));
+			&& !(timedout = stopFunction(limit)));
 
-	LED_PORT->BSRR = LED_OFF; // LED
+	LED_off();
+
 	GPS_getData();
-	GPS_debugGPSPosition();
 
-	if (timeout) {
-		trace_printf("GPS wait for precision pos: FAIL\n");
+	if (timedout) {
+//		trace_printf("GPS wait for precision pos: FAIL\n");
 	} else if (GPSPosition.lat != 0 || GPSPosition.lon != 0) {
-		if (lastOdometeredPosition.lat + lastOdometeredPosition.lon + 1
-				== lastOdometeredPositionCheck) {
+		Odometer_t tmpOdo;
+		uint32_t alreadyRunning = RCC->AHBENR & RCC_AHBENR_MIFEN;
+		RCC->AHBENR |= RCC_AHBENR_MIFEN;
+		tmpOdo = odometer;
+		RCC->AHBENR = (RCC_AHBENR_MIFEN & ~RCC_AHBENR_MIFEN) | alreadyRunning;
+
+		if (odometer_checksum(&tmpOdo) == tmpOdo.checksum) {
 			// valid
 			double latFactor = cos(GPSPosition.lat * 0.01745329251994); // convert to radians
-			double dist = (GPSPosition.lat - lastOdometeredPosition.lat)
-					* (GPSPosition.lat - lastOdometeredPosition.lat);
-			dist += (GPSPosition.lon - lastOdometeredPosition.lon)
-					* (GPSPosition.lon - lastOdometeredPosition.lon)
+			double dist = (GPSPosition.lat - tmpOdo.lastOdometeredPosition.lat)
+					* (GPSPosition.lat - tmpOdo.lastOdometeredPosition.lat);
+			dist += (GPSPosition.lon - tmpOdo.lastOdometeredPosition.lon)
+					* (GPSPosition.lon - tmpOdo.lastOdometeredPosition.lon)
 					* latFactor;
 			dist = sqrt(dist);
 			// now it is in degrees latitude, each of which is 60nm, or 1852 * 60m
 
 			dist = dist * 60.0; // now it's in nautical miles
-			odometer_nm += dist;
+			tmpOdo.odometer_nm += dist;
 
 			Time_t now;
-			RTC_getTime(&now);
-			float time_h = timeAfter_seconds(&lastOdometerTime, &now) / 3600.0;
+			RTC_read(&now);
+
+			// time in hours
+			float time_h = timeAfter_seconds(&tmpOdo.lastOdometerTime, &now)
+					/ 3600.0;
+
+			// nm / hours === knots
 			speed_kts = dist / time_h;
-			// trace_printf("Dist, time, speed: %d,%d,%d\n", (int)dist, time_s, (int)speed_m_s);
-			lastOdometerTime = now;
+			tmpOdo.lastOdometerTime = now;
 		} else {
-			odometer_nm = 0;
+			tmpOdo.odometer_nm = 0;
 			speed_kts = 0;
 		}
 
-		lastOdometeredPosition.lat = GPSPosition.lat;
-		lastOdometeredPosition.lon = GPSPosition.lon;
-		lastOdometeredPositionCheck = lastOdometeredPosition.lat
-				+ lastOdometeredPosition.lon + 1;
+		tmpOdo.lastOdometeredPosition.lat = GPSPosition.lat;
+		tmpOdo.lastOdometeredPosition.lon = GPSPosition.lon;
+		tmpOdo.checksum = odometer_checksum(&tmpOdo);
+		NVM_WriteOdometer(&tmpOdo);
 	}
 
-	return !timeout;
-}
-
-void GPS_start() {
-// GPS on
-	// PWR_startDevice(E_DEVICE_GPS);
-	GPS_powerOn();
+	return !timedout;
 }
 
 void GPS_shutdown() {
@@ -219,4 +222,50 @@ void GPS_shutdown() {
 	GPS_powerOff();
 // And note for the crash log that GPS was off.
 	// PWR_stopDevice(E_DEVICE_GPS);
+}
+
+void GPSCycle_timeLimited() {
+	uint32_t gpsTimeout = 100000;
+	uint32_t gpsstart = systime;
+	GPS_start();
+	if (GPS_waitForTimelock(GPSTimeoutStopFunctionInit, GPSTimeoutStopFunction,
+			&gpsTimeout)) {
+		RTC_set(&GPSDateTime.time);
+	}
+
+	GPS_waitForPrecisionPosition(GPSTimeoutStopFunctionInit,
+			GPSTimeoutStopFunction, &gpsTimeout);
+	lastGPSFixTime = (systime - gpsstart) / 1000;
+	calibratePLLFrequency();
+
+	GPS_powerOff();
+}
+
+uint8_t GPSCycle_voltageLimited() {
+	float cutoffVoltage = 2.1;
+	uint32_t gpsstart = systime;
+	uint8_t result = 0;
+
+	GPS_start();
+
+	if (GPS_waitForTimelock(GPSVoltageStopFunctionInit, GPSVoltageStopFunction,
+			&cutoffVoltage)) {
+		RTC_set(&GPSDateTime.time);
+		result = 1;
+	}
+
+	if (GPS_waitForPrecisionPosition(GPSVoltageStopFunctionInit,
+			GPSVoltageStopFunction, &cutoffVoltage)) {
+		lastGPSFixTime = (systime - gpsstart) / 1000;
+		calibratePLLFrequency();
+		result = 2;
+	}
+
+	GPS_shutdown();
+
+	if (result == 2) {
+		recordFlightLog();
+	}
+
+	return result;
 }

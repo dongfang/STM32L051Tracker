@@ -1,13 +1,12 @@
 #include "stm32l0xx.h"
 #include "Types.h"
-#include "Trace.h"
+#include "LED.h"
 
 // PB6, SCL is D10 = CN5,3 and CN10,17 on the nucleo
 // PB7, SDA, is CN7,21 on nucleo (it has no arduino name).
 
 void I2C1_GPIO_Config(void) {
-	//SET_BIT(RCC->IOPENR, RCC_IOPENR_GPIOBEN);
-	enableGPIOClock(RCC_IOPENR_GPIOBEN);
+	SET_BIT(RCC->IOPENR, RCC_IOPENR_GPIOBEN);
 
 	// 6 and 7 are set to plain old output.
 	GPIOB->MODER = (GPIOB->MODER & ~(0b11 << (6 * 2) | 0b11 << (7 * 2)))
@@ -165,14 +164,16 @@ boolean I2C1_writeByte(uint8_t DeviceAddress, uint8_t registerAddress,
 	uint8_t temp;
 
 	if (!I2C1_start()) {
-		trace_printf("I2CStart fail\n");
+		LED_faultCode(LED_FAULT_I2C_DEAD);
+		//trace_printf("I2CStart fail\n");
 		return false;
 	}
 
 	I2C1_sendByte(DeviceAddress & 0xFE);
 
 	if (!I2C1_waitAck()) {
-		trace_printf("I2CWriteDeviceAddress fail\n");
+		//trace_printf("I2CWriteDeviceAddress fail\n");
+		LED_faultCode(LED_FAULT_I2C_DEAD);
 		I2C1_stop();
 		return false;
 	}
@@ -180,7 +181,8 @@ boolean I2C1_writeByte(uint8_t DeviceAddress, uint8_t registerAddress,
 	I2C1_sendByte(registerAddress);
 
 	if (!I2C1_waitAck()) {
-		trace_printf("I2CWriteRegAddress fail\n");
+		// trace_printf("I2CWriteRegAddress fail\n");
+		LED_faultCode(LED_FAULT_I2C_DEAD);
 		I2C1_stop();
 		return false;
 	}	// I2C1_start();
@@ -189,7 +191,8 @@ boolean I2C1_writeByte(uint8_t DeviceAddress, uint8_t registerAddress,
 
 	I2C1_sendByte(data);
 	if (!I2C1_waitAck()) {
-		trace_printf("I2CWriteData fail\n");
+		//trace_printf("I2CWriteData fail\n");
+		LED_faultCode(LED_FAULT_I2C_DEAD);
 		I2C1_stop();
 		return false;
 	}

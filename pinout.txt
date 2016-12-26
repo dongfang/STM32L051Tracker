@@ -4,9 +4,7 @@ CPU STM32L051K8
 PLL CDCE(L)913
 GPS MAX-7c. Vcc_io is jumpered between switched Vcc and a solid Vcc_bkup. All other MAX-7 only run at voltages we don't have.
 
-Power SPV1040
-  Battery config: Stepdown switcher like Alan (since voltage is too high for direct)
-  Supercap config: Direct
+Power SPV1050 or (TPS61200 + TLV713)
   
 Radio
   Si4463 optional (different pcb??)
@@ -53,3 +51,12 @@ USART1: PA9, PA10 or PB6, PB7
 USART2: PA14, PA14 or PA2, PA3
 I2C: PB6, PB7
 SPI: (PA5 or PB3) and (PA11 or PA6 or PB4) and (PA12 or PA7 or PB5)
+
+Needed option pins:
+- Calibrate (PA8)
+- Groundtest (PA11)
+- ResetLogs (PA12)
+
+
+need multiply wspr resistors by 1.22 (610k and 1.22M) (620k and 1M2)
+

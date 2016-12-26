@@ -6,8 +6,7 @@
  */
 #include "stm32l0xx.h"
 #include "Types.h"
-#include "Trace.h"
-
+#include "LED.h"
 #include "RTC.h"
 
 void RTC_init() {
@@ -25,12 +24,11 @@ void RTC_init() {
 	// RTC->CR |= RTC_CR_BYPSHAD;
 
 	// Set up MCO if we need that
-	// SET_BIT(RCC->IOPENR, RCC_IOPENR_GPIOAEN);
-	enableGPIOClock(RCC_IOPENR_GPIOAEN);
-	GPIOA->MODER = (GPIOA->MODER & ~(3 << (2 * 8))) | 2 << (2 * 8);
-	GPIOA->AFR[1] = (GPIOA->AFR[1] & ~(15 << (4 * 0))) | 0;
+	SET_BIT(RCC->IOPENR, RCC_IOPENR_GPIOAEN);
 
-	RCC->CFGR |= 7U << 24; // RCC_CFGR_MCO_LSE
+	//GPIOA->MODER = (GPIOA->MODER & ~(3 << (2 * 8))) | 2 << (2 * 8);
+	//GPIOA->AFR[1] = (GPIOA->AFR[1] & ~(15 << (4 * 0))) | 0;
+	// RCC->CFGR |= 7U << 24; // RCC_CFGR_MCO_LSE
 
 	int i = 10000;
 	while (i-- > 0) {
@@ -39,7 +37,7 @@ void RTC_init() {
 	}
 
 	if (i == 0) {
-		trace_printf("LSE fail!\n");
+		LED_faultCode(LED_FAULT_LSE_DEAD);
 	}
 }
 
@@ -54,7 +52,7 @@ void RTC_deinit() {
  The RSF bit must be cleared after wakeup and not before entering low-power mode.
  After a system reset, the software must wait until RSF is set before reading the RTC_SSR, RTC_TR and RTC_DR registers. Indeed, a system reset resets the shadow registers to their default values.
  */
-void RTC_read(RTC_Time_t* out) {
+void RTC_read(Time_t* out) {
 	// Strictly, if BYPSHAD == 0 we should do this check that shadow regs are updated.
 	// while((RTC->ISR & RTC_ISR_RSF) == 0);
 
@@ -64,7 +62,6 @@ void RTC_read(RTC_Time_t* out) {
 	out->minutes = ((tr & RTC_TR_MNT) >> 12) * 10 + ((tr & RTC_TR_MNU) >> 8);
 	out->seconds = ((tr & RTC_TR_ST) >> 4) * 10 + ((tr & RTC_TR_SU) >> 0);
 	// uint8_t ss = RTC->SSR;
-
 	// And strictly if BYPSHAD == 0, we should clear RSF here.
 }
 
@@ -78,7 +75,7 @@ void RTC_lock() {
 	RTC->WPR = 0;
 }
 
-void RTC_set(RTC_Time_t* time) {
+void RTC_set(Time_t* time) {
 	uint32_t tr = ((time->hours / 10) << 20) | ((time->hours % 10) << 16)
 			| ((time->minutes / 10) << 12) | ((time->minutes % 10) << 8)
 			| ((time->seconds / 10) << 4) | ((time->seconds % 10) << 0);
@@ -86,6 +83,8 @@ void RTC_set(RTC_Time_t* time) {
 	uint32_t dr = ((2016 / 10) << 20) | ((2016 % 10) << 16) | 1 << 13
 			| ((12 / 10) << 12) | ((12 % 10) << 8) | ((31 / 10) << 4)
 			| ((31 % 10) << 0);
+
+	RTC_unlock();
 
 	//SET_BIT(RTC->ISR, RTC_ISR_INIT);
 	RTC->ISR = 0xFFFFFFFF; // Set INIT bit and leave all the flags alone.
@@ -99,7 +98,8 @@ void RTC_set(RTC_Time_t* time) {
 	RTC->CR &= ~RTC_CR_FMT;
 
 	CLEAR_BIT(RTC->ISR, RTC_ISR_INIT);
-	// while (RTC->ISR & RTC_ISR_INITF != 0);
+	while ((RTC->ISR & RTC_ISR_INITF) != 0);
+	RTC_lock();
 }
 
 void RTC_scheduleWakeup(uint16_t eachNSec) {
@@ -109,6 +109,7 @@ void RTC_scheduleWakeup(uint16_t eachNSec) {
 	EXTI->EMR |= 1 << 20; // unmask
 
 	// From 26.3.7 in reference manual.
+	RTC_unlock();
 	RTC->CR &= ~RTC_CR_WUTE;
 	while (RTC->ISR & RTC_ISR_WUTWF == 0)
 		;
@@ -116,15 +117,18 @@ void RTC_scheduleWakeup(uint16_t eachNSec) {
 	RTC->WUTR = eachNSec - 1;
 
 	RTC->CR |= RTC_CR_WUTE | RTC_CR_WUTIE;
+	RTC_lock();
 }
 
-void RTC_scheduleAlarmA(RTC_Time_t* time) {
+void RTC_scheduleAlarmA(Time_t* time) {
 	// EXTI Line 17 to be sensitive to rising edges (Interrupt or Event modes)
 	// EXTI->PR |= 1<<17; this clearing is done automatically next line.
 	EXTI->RTSR |= 1 << 17;
 	EXTI->EMR |= 1 << 17; // unmask
 
 	NVIC_EnableIRQ(RTC_IRQn);
+
+	RTC_unlock();
 
 	// From 26.3.7 in reference manual.
 	RTC->CR &= ~RTC_CR_ALRAE;
@@ -138,9 +142,10 @@ void RTC_scheduleAlarmA(RTC_Time_t* time) {
 			| (time->seconds / 10) << 4 | (time->seconds % 10);
 
 	RTC->CR |= RTC_CR_ALRAE | RTC_CR_ALRAIE;
+	RTC_lock();
 }
 
-void RTC_scheduleAlarmB(RTC_Time_t* time) {
+void RTC_scheduleAlarmB(Time_t* time) {
 	// EXTI Line 17 to be sensitive to rising edges (Interrupt or Event modes)
 	// EXTI->PR |= 1<<17; this clearing is done automatically next line.
 	EXTI->RTSR |= 1 << 17;
@@ -149,6 +154,7 @@ void RTC_scheduleAlarmB(RTC_Time_t* time) {
 	// Wakeup seems to work great but I never get an IRQ...
 	NVIC_EnableIRQ(RTC_IRQn);
 
+	RTC_unlock();
 	// From 26.3.7 in reference manual.
 	RTC->CR &= ~RTC_CR_ALRBE;
 	while (RTC->ISR & RTC_ISR_ALRBWF == 0)
@@ -160,6 +166,7 @@ void RTC_scheduleAlarmB(RTC_Time_t* time) {
 			| (time->seconds % 10);
 
 	RTC->CR |= RTC_CR_ALRBE | RTC_CR_ALRBIE;
+	RTC_lock();
 }
 /*
  * RTC auto-wakeup (AWU) from the Stop mode
@@ -197,14 +204,53 @@ void RTC_scheduleAlarmB(RTC_Time_t* time) {
  Configure and enable the RTC IRQ channel in the NVIC. Configure the RTC to generate RTC interrupt(s).
  */
 
+void RTC_nextModoloMinutes(Time_t* time, uint8_t modulo, uint8_t offset) {
+	time->seconds = 0;
+	time->minutes = time->minutes + modulo;
+	time->minutes -= time->minutes % modulo;
+	time->minutes += offset;
+	if (time->minutes >= 60) {
+		time->hours++;
+		time->minutes -= 60;
+		if (time->hours >= 24) {
+			time->hours = 0;
+		}
+	}
+}
+
 void RTC_backupExperiment() {
 	RTC_unlock();
-	trace_printf("Backup is: %d\n", RTC->BKP0R);
+//	trace_printf("Backup is: %d\n", RTC->BKP0R);
 	RTC->BKP0R += 1;
 }
 
+volatile uint8_t RTCHandlerFlag;
+
 void RTC_IRQHandler() {
-	trace_printf("Some RTC IRQ fired %d\n", RTC->ISR);
+//	trace_printf("Some RTC IRQ fired %d\n", RTC->ISR);
+	RTCHandlerFlag = 1;
 }
 
 
+int secondsOfDay(Time_t* time) {
+	int result = time->seconds;
+	result += time->minutes * 60;
+	result += time->hours * 3600;
+	return result;
+}
+
+int timeDiffSeconds(Time_t* from, Time_t* to) {
+	return secondsOfDay(to) - secondsOfDay(from);
+}
+
+// From must be before or equal to to.
+int timeAfter_seconds(Time_t* from, Time_t* to) {
+	int diff = timeDiffSeconds(from, to);
+	if (diff < 0)
+		diff += 24 * 60 * 60;
+	return diff;
+}
+
+uint16_t compactDateTime(DateTime_t* datetime) {
+	return (datetime->date.date*24 + datetime->time.hours)*60 + datetime->time.minutes;
+}

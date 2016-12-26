@@ -4,7 +4,7 @@
  *  Created on: Jun 2, 2016
  *      Author: dongfang
  */
-
+/*
 #include <stdio.h>
 #include "stm32l0xx.h"
 
@@ -16,8 +16,7 @@ void trace_initialize() {
 	SET_BIT(RCC->APB2ENR, RCC_APB2ENR_USART1EN);
 
 	// and GPIO clock too
-	// SET_BIT(RCC->IOPENR, RCC_IOPENR_GPIOAEN);
-	enableGPIOClock(RCC_IOPENR_GPIOAEN);
+	SET_BIT(RCC->IOPENR, RCC_IOPENR_GPIOAEN);
 
 	// Set to alternate function
 	GPIOA->MODER = (GPIOA->MODER & ~(3 << (2 * 9))) | (2 << (2 * 9));
@@ -56,8 +55,8 @@ void doSend(char c) {
 	TRACE_USART->TDR = c; // Write transmit register
 }
 
-ssize_t trace_write(const char* buf /* __attribute__((unused)) */,
-		size_t nbyte /*__attribute__((unused))*/) {
+ssize_t trace_write(const char* buf / * __attribute__((unused)) * /,
+		size_t nbyte / *__attribute__((unused))* /) {
 #if defined(TRACE)
 	ssize_t cnt = 0;
 	while (cnt < nbyte) {
@@ -66,4 +65,4 @@ ssize_t trace_write(const char* buf /* __attribute__((unused)) */,
 	return (ssize_t) nbyte; // all characters successfully sent
 #endif
 	return -1;
-}
+}*/

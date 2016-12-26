@@ -4,9 +4,9 @@
 #include "GPS.h"
 #include <math.h>
 #include <string.h>
-#include "Trace.h"
 #include "Systime.h"
 #include "GPS.h"
+#include "Globals.h"
 #include "stm32l0xx.h"
 
 enum {
@@ -587,15 +587,13 @@ uint8_t nmea_parse(char c) {
 #endif
 		}
 
-		uint32_t systime = systimeMillis();
 		// trigger sending a message, until confirmed.
 		if (!navSettingsConfirmed && currentSendingMessage == NULL
-				&& systime
-						>= lastSendConfigurationTime + GPS_CONF_RESEND_INTERVAL) {
+				&& systime >= lastSendConfigurationTime + GPS_CONF_RESEND_INTERVAL) {
 			ackedClassId = 0;
 			ackedMessageId = 0; // clear any prior acknowledge.
 			beginSendUBXMessage(&INIT_NAV_MESSAGE);
-			lastSendConfigurationTime = systimeMillis();
+			lastSendConfigurationTime = systime;
 #ifdef TRACE_GPS
 			trace_printf("Sending GPS conf. message\n");
 #endif
@@ -746,21 +744,20 @@ void GPS_getData() {
 	NVIC_EnableIRQ(USART2_IRQn);
 }
 
-void GPS_powerOn() {
+void GPS_start() {
 	// Reset the message sending
-	lastSendConfigurationTime = systimeMillis() - GPS_CONF_RESEND_INTERVAL;
+	lastSendConfigurationTime = systime - GPS_CONF_RESEND_INTERVAL;
 	currentSendingIndex = 0;
 	currentSendingMessage = NULL;
 	navSettingsConfirmed = false;
 
-	GPIOA->BSRR = (1<<(16+7)); // PA7 low
+	GPIOA->BRR = 1<<7; // PA7 low
 
 	// USART clock
 	SET_BIT(RCC->APB1ENR, RCC_APB1ENR_USART2EN);
 
 	// and GPIO clock too
-	// SET_BIT(RCC->IOPENR, RCC_IOPENR_GPIOAEN);
-	enableGPIOClock(RCC_IOPENR_GPIOAEN);
+	SET_BIT(RCC->IOPENR, RCC_IOPENR_GPIOAEN);
 
 	// Set to alternate function
 	GPIOA->MODER = (GPIOA->MODER & ~(3 << (2 * 2))) | (2 << (2 * 2));
@@ -773,7 +770,7 @@ void GPS_powerOn() {
 	uint32_t brr = 16E6 / 9600;
 	USART2->BRR = brr;
 
-	NVIC_SetPriority(USART2_IRQn, 2);
+	NVIC_SetPriority(USART2_IRQn, 1);
 	NVIC_EnableIRQ(USART2_IRQn);
 
 	// Don't care about overrun detect (what can we do anyway)
@@ -790,7 +787,7 @@ void GPS_stopListening() {
 }
 
 void GPS_powerOff() {
-	GPIOA->BSRR = (1<<7); // Set PA7
+	GPIOA->BSRR = 1<<7; // Set PA7
 }
 
 boolean GPS_isGPSRunning() {
@@ -827,10 +824,6 @@ void GPS_invalidateNumSatellites() {
 
 uint8_t GPS_numberOfSatellites() {
 	return nmeaStatusInfo_unsafe.numberOfSatellites;
-}
-
-void GPS_powerUpInit() {
-	// do nothing
 }
 
 //#endif

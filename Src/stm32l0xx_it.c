@@ -38,8 +38,8 @@
  */
 
 /* Includes ------------------------------------------------------------------*/
-#include "main.h"
 #include "stm32l0xx_it.h"
+#include "LED.h"
 
 /** @addtogroup STM32L0xx_HAL_Examples
  * @{
@@ -69,6 +69,8 @@ void NMI_Handler(void) {
 void HardFault_Handler(void) {
 	/* Go to infinite loop when Hard Fault exception occurs */
 	while (1) {
+		LED_faultCode(LED_FAULT_HARDFAULT);
+		// We need to reset the thing here.
 	}
 }
 

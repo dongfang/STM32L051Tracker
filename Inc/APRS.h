@@ -28,15 +28,6 @@ struct APRS_PARAM {
 	float coeff[3];
 };
 
-typedef enum {
-	COMPRESSED_POSITION_MESSAGE,
-	STORED_POSITION_MESSAGE,
-	STATUS_MESSAGE
-} APRS_MessageType_t;
-
-// Using packed locations saves 584 bytes...
-// typedef uint16_t APRSPolygonVertex_t;
-
 
 // Right. Lon is first. That's because Google Earth KML does same, just reduces data conversion effort.
 typedef struct {
@@ -55,10 +46,6 @@ typedef enum {
 	AFSK, GFSK
 } APRSModulationMode_t;
 
-typedef enum {
-	VHF,
-	HF
-} APRS_Band_t;
 
 // APRS
 typedef struct {
@@ -96,14 +83,11 @@ void APRS_debugWorldMap();
 void APRS_transmitMessage(
 		APRS_Band_t band,
 		APRS_MessageType_t messageType,
-		uint32_t frequency,
-		uint32_t referenceFrequency);
+		uint32_t frequency);
 
-void APRS_transmitStoredMessage(
-		APRS_Band_t band,
-		LogRecord_t* storedMessage,
-		uint32_t frequency,
-		uint32_t referenceFrequency);
+char* APRS_marshallFlightLogMessage(const volatile LogRecord_t* message, char* buf);
+char* printInteger(char* out, int32_t number);
+char* print2DigitFloat(char* out, float in);
 
 extern const APRSTransmission_t APRS_TRANSMISSIONS[];
 

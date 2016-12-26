@@ -14,8 +14,6 @@
 // the implementation PLL type decides what PLLSetting_t actually is.
 #include "CDCE913.h"
 
-#define PLL_XTAL_FREQUENCY PLL_XTAL_DEFAULT_FREQUENCY
-
 // Implementation type of PLL setting (well, one of them)
 typedef CDCE913_PLL_Setting_t PLL_Setting_t;
 
@@ -23,10 +21,10 @@ typedef CDCE913_PLL_Setting_t PLL_Setting_t;
  * PLL options for different frequencies.
  */
 
-boolean PLL_bestPLLSetting(
+double PLL_bestPLLSetting(
 		uint32_t oscillatorFrequency,
 		uint32_t desiredFrequency,
-		double maxError,
+		// double maxError,
 		PLL_Setting_t* result) ;
 
 int8_t PLL_bestTrim(double desiredTrim);
@@ -35,7 +33,7 @@ void setPLL(uint8_t output, const PLL_Setting_t* setting);
 
 void PLL_setXOPassthroughMode(uint8_t trim);
 
-void PLL_setDirectModeWithDivision(uint8_t trim, uint16_t pdiv);
+void PLL_setBypassModeWithDivision(uint8_t trim, uint16_t pdiv);
 
 // Shut em down
 void PLL_shutdown();

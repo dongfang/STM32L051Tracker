@@ -26,17 +26,74 @@
 #include "APRS.h"
 #include "AX25.h"
 #include "AFSK.h"
-
-#include "trace.h"
+#include "Calibration.h"
 #include "Types.h"
 #include "PLL.h"
 #include "Globals.h"
+#include "LED.h"
 
 static void APRS_initDirectVHFTransmission(uint32_t frequency,
 		uint32_t referenceFrequency);
 static void APRS_endDirectTransmission();
 static void APRS_initDirectHFTransmission(uint32_t frequency,
 		uint32_t referenceFrequency);
+
+char currentTextMessage[64] __attribute__((section (".noinit")));
+
+// JUST to avoid printf's huge memory impact.
+char* printInteger(char* out, int32_t number) {
+	static const int divs[] = { 1, 10, 100, 1000, 10000, 100000, 1000000,
+			10000000, 100000000, 1000000000 };
+	int dividx = 0;
+	size_t pos = 0;
+	if (number < 0) {
+		out[pos++] = '-';
+		number = -number;
+	}
+	// 0->0, 9->0, 10->1, 99->1, 100->2
+	while (dividx <= 8 && number >= divs[dividx + 1]) {
+		dividx++;
+	}
+	boolean started = false;
+	do {
+		int digit = number / divs[dividx];
+		if (started || digit || dividx == 0) {
+			out[pos++] = '0' + digit;
+			started = true;
+		}
+		number -= divs[dividx] * digit;
+		dividx--;
+	} while (dividx >= 0);
+	out[pos] = 0;
+	return out + pos;
+}
+
+char* print2DigitFloat(char* out, float in) {
+	int i_Hundredths = (int) (in * 100);
+	int i_Tenths = (int) (in * 10);
+	int i_Whole = (int) in;
+	int i_hundredthdigit = i_Hundredths % 10;
+	if (i_hundredthdigit < 0)
+		i_hundredthdigit = -i_hundredthdigit;
+	int i_tenthdigit = i_Tenths % 10;
+	if (i_tenthdigit < 0)
+		i_tenthdigit = -i_tenthdigit;
+
+	size_t pos = 0;
+	if (i_Whole < 0) {
+		out[pos++] = '-';
+		i_Whole = -i_Whole;
+	}
+
+	char* buf = printInteger(out + pos, i_Whole);
+
+	buf[pos++] = '.';
+	buf[pos++] = i_tenthdigit + '0';
+	buf[pos++] = i_hundredthdigit + '0';
+	buf[pos] = 0;
+
+	return buf + pos;
+}
 
 // Module functions
 static float meters_to_feet(float m) {
@@ -67,20 +124,6 @@ static void base91encode2char(uint16_t val, char* out) {
 		val = 8280;
 	out[0] = val / 91 + 33;
 	out[1] = val % 91 + 33;
-}
-
-static uint8_t statusMessageValue(char memo, float in, char* out) {
-	int i_Hundredths = (int) (in * 100);
-	int i_Tenths = (int) (in * 10);
-	int i_Whole = (int) (in);
-	int i_hundredthdigit = i_Hundredths % 10;
-	if (i_hundredthdigit < 0)
-		i_hundredthdigit = -i_hundredthdigit;
-	int i_tenthdigit = i_Tenths % 10;
-	if (i_tenthdigit < 0)
-		i_tenthdigit = -i_tenthdigit;
-	return sprintf(out, ",%c%d.%c%c", memo, i_Whole, (i_tenthdigit + '0'),
-			(i_hundredthdigit + '0'));
 }
 
 /*
@@ -141,9 +184,11 @@ static uint8_t compressPosition(float lat, float lon, float alt, char* out) {
 	return 13;
 }
 
-static uint8_t compressedTimestamp(uint8_t date, Time_t* time, char* out) {
-	return sprintf(out, "%02d%02d%02dz", date, time->hours, time->minutes);
-}
+/*
+ static uint8_t compressedTimestamp(uint8_t date, Time_t* time, char* out) {
+ return sprintf(out, "%02d%02d%02dz", date, time->hours, time->minutes);
+ }
+ */
 
 static void aprs_send_header(const AX25_Address_t* destination,
 		uint16_t txDelay) {
@@ -165,45 +210,59 @@ static void aprs_send_header(const AX25_Address_t* destination,
 	ax25_send_header(addresses, numAddresses);
 }
 
-static uint16_t statusMessageSequence __attribute__((section (".noinit")));
+// This does reset, so we can see # reboots. It is not required for APRS anyway.
+static uint16_t statusMessageSequence;
+
+void APRS_marshallTextMessage(uint16_t txDelay) {
+	aprs_send_header(&APRS_DEST, txDelay);
+	ax25_send_byte('>');
+	ax25_send_string(currentTextMessage);
+	ax25_end();
+}
 
 // Exported functions
-void APRS_marshallStatusMessage(uint32_t txFrequency,
-		uint32_t referenceFrequency, uint16_t txDelay
-		// Something about uptime, brownout resets, ...
-		) {
-
-	char temp[12];
+void APRS_marshallTelemetryMessage(uint16_t txDelay) {
+	uint32_t alreadyRunning = RCC->AHBENR & RCC_AHBENR_MIFEN;
+	RCC->AHBENR |= RCC_AHBENR_MIFEN;
 
 	if (statusMessageSequence > 999)
 		statusMessageSequence = 0;
 
-	aprs_send_header(&APRS_DEST, txDelay);
-	ax25_send_byte('>');
+	char* buf = currentTextMessage;
+	*buf++ = 'q';
+	buf = printInteger(buf, statusMessageSequence);
 
-	sprintf(temp, "q%u", statusMessageSequence);
-	ax25_send_string(temp);
+	*buf++ = ',';
+	*buf++ = 'a';
+	buf = printInteger(buf, (int) lastNonzero3DPosition.alt);
 
-	sprintf(temp, ",a%d", (int) lastNonzero3DPosition.alt);
-	ax25_send_string(temp);
+	*buf++ = ',';
+	*buf++ = 'b';
+	buf = print2DigitFloat(buf, vBattery);
 
+	*buf++ = ',';
+	*buf++ = 's';
+	buf = print2DigitFloat(buf, vSolar);
+
+	*buf++ = ',';
+	*buf++ = 'o';
+	buf = print2DigitFloat(buf, odometer.odometer_nm);
+
+	*buf++ = ',';
+	*buf++ = 'v';
+	buf = print2DigitFloat(buf, climbRate);
+
+	*buf++ = ',';
+	*buf++ = 't';
+	buf = printInteger(buf, temperature);
+
+	int32_t pllXtalDiff =
+			getCalibratedPLLOscillatorFrequency() - DEFAULT_XTAL_FREQ;
+	*buf++ = ',';
+	*buf++ = 'x';
+	buf = printInteger(buf, pllXtalDiff);
 	/*
-	 sprintf(temp, ",d%d", (int) odometer_nm);
-	 ax25_send_string(temp);
-
-	 statusMessageValue('v', climbRate, temp);
-	 ax25_send_string(temp);
-
-	 sprintf(temp, ",r%u", numRestarts);
-	 ax25_send_string(temp);
-
 	 sprintf(temp, ",f%lu", txFrequency / 1000);
-	 ax25_send_string(temp);
-
-	 statusMessageValue('b', batteryVoltage, temp);
-	 ax25_send_string(temp);
-
-	 statusMessageValue('s', solarVoltage, temp);
 	 ax25_send_string(temp);
 
 	 statusMessageValue('g', PHY_batteryAfterGPSVoltage(), temp);
@@ -224,26 +283,24 @@ void APRS_marshallStatusMessage(uint32_t txFrequency,
 	 ax25_send_string(temp);
 	 */
 
-	ax25_send_byte('m');
-	ax25_send_byte(scheduleName);
-
-	ax25_end();
-
-	statusMessageSequence++;
+	// ax25_send_byte('m');
+	// ax25_send_byte(scheduleName);
+	RCC->AHBENR = (RCC_AHBENR_MIFEN & ~RCC_AHBENR_MIFEN) | alreadyRunning;
+	APRS_marshallTextMessage(txDelay);
 }
 
+// This does not reset at CPU reset.
 static uint16_t telemetrySequence __attribute__((section (".noinit")));
 
 void APRS_marshallPositionMessage(uint16_t txDelay) {
 	// We offset temp. by 100 degrees so it is never negative.
-	// Reportable range is thus: -100C to 728C with 1 decimal.
-	float _temperature = temperature + 100;
+	int _temperature = temperature + 100;
 	if (_temperature < 0)
 		_temperature = 0;
 
-	uint16_t telemetryValues[] = { (uint16_t) (batteryVoltage * 1000.0f),
-			(uint16_t) (solarVoltage * 1000.0f), _temperature * 10,	// Will require an offset of 100
-			lastGPSFixTime, (int16_t) (speed_kts * 10) // conversion to 1/10 kts
+	uint16_t telemetryValues[] = { (uint16_t) (vBattery * 1000.0f),
+			(uint16_t) (vSolar * 1000.0f), _temperature, lastGPSFixTime,
+			(int16_t) (speed_kts * 10) // conversion to 1/10 kts
 			};
 
 	aprs_send_header(&APRS_APSTM1_DEST, txDelay);
@@ -251,14 +308,15 @@ void APRS_marshallPositionMessage(uint16_t txDelay) {
 	ax25_send_byte('!'); // Report w/o timestamp, no APRS messaging.
 	uint8_t end = 0;
 
-	Location_t location = lastNonzeroPosition;
+	// Location_t location = lastNonzeroPosition;
 	// excludeZones(&location); no need any more.
 
-	float alt = GPSPosition.alt;
+	float alt = lastNonzeroPosition.alt;
 	if (alt < 0)
 		alt = 0;
 
-	end = compressPosition(location.lat, location.lon, alt, temp);
+	end = compressPosition(lastNonzeroPosition.lat, lastNonzeroPosition.lon,
+			alt, temp);
 
 	telemetrySequence++;
 	if (telemetrySequence > 8280) {
@@ -304,19 +362,16 @@ void APRS_marshallPositionMessage(uint16_t txDelay) {
  ax25_end();
  }
  */
-static size_t binaryMarshallWordByBase91(char buf[], uint32_t word) {
+static char* binaryMarshallWordByBase91(char* buf, uint32_t word) {
 	for (size_t i = 0; i < 5; i++) {
 		uint16_t work = word % 91;
 		buf[i] = work + 33;
 		word = word / 91;
 	}
-	return 5;
+	return buf + 5;
 }
 
-void APRS_marshallFlightLogMessage(LogRecord_t* message[], int count,
-		uint16_t txDelay) {
-	aprs_send_header(&APRS_APSTM1_DEST, txDelay);
-	ax25_send_byte('>');
+char* APRS_marshallFlightLogMessage(const volatile LogRecord_t* message, char* buf) {
 	// Status message
 	//The status text occupies the rest of the Information field, and may be up to 62 characters long
 	// (if there is no timestamp in the report) or 55 characters (if there is a timestamp).
@@ -324,20 +379,12 @@ void APRS_marshallFlightLogMessage(LogRecord_t* message[], int count,
 	// Approach: base-91, 6.5077946401987 bits per char.
 	// Each message word fits into 5 chars (32/6.5077946401987 <= 5)
 	size_t sizeInWords = (sizeof(LogRecord_t) + 3) / 4;
-	char temp[64];
-	temp[1] = '+';
-	size_t offset = 1;
-	if (count > 62 / (sizeInWords * 5)) // 62 is max. message body in chars and each word is 5 chars.
-		count = 62 / (sizeInWords * 5);
-	for (size_t i = 0; i < count; i++) {
-		uint32_t* unstructuredMessage = (uint32_t*) message[i];
-		for (size_t j = 0; j < sizeInWords; j++) {
-			offset += binaryMarshallWordByBase91(temp + offset, unstructuredMessage[j]);
-		}
+	uint32_t* unstructuredMessage = (uint32_t*) message;
+	for (size_t j = 0; j < sizeInWords; j++) {
+		buf = binaryMarshallWordByBase91(buf, unstructuredMessage[j]);
 	}
-	temp[offset] = 0;
-	ax25_send_string(temp);
-	ax25_end();
+	*buf = 0;
+	return buf;
 }
 
 const APRSTransmission_t APRS_TRANSMISSIONS[] = { { .modulationMode = AFSK,
@@ -349,31 +396,31 @@ const APRSTransmission_t APRS_TRANSMISSIONS[] = { { .modulationMode = AFSK,
 void APRS_makeDirectTransmissionFrequency(uint32_t frequency,
 		uint32_t referenceFrequency, CDCE913_OutputMode_t output) {
 	PLL_Setting_t pllSetting;
-	double maxError = 30E-6;
-	if (PLL_bestPLLSetting(referenceFrequency, frequency, maxError,
-			&pllSetting)) {
-		trace_printf("Using N=%d, M=%d, trim=%d\n", pllSetting.N, pllSetting.M,
-				pllSetting.trim);
+	double maxError = 20E-6; // 20 ppm tolerated, that is 3kHz off(!)
+	double error = PLL_bestPLLSetting(referenceFrequency, frequency,
+			&pllSetting);
+	double absError = error < 0 ? -error : error;
+	if (absError <= maxError) {
+		// trace_printf("Using N=%d, M=%d, trim=%d\n", pllSetting.N, pllSetting.M, pllSetting.trim);
 		setPLL(output, &pllSetting);
 	} else {
-		trace_printf("Was not able to find a setting (weird)\n");
+		// trace_printf("Was not able to find a setting (weird)\n");
+		LED_faultCode(LED_FAULT_NO_PLL_SETTING);
 	}
 }
 
 static void APRS_initDirectHFTransmission(uint32_t frequency,
 		uint32_t referenceFrequency) {
 	// HF_enableDriver(HF_power());
-	APRS_makeDirectTransmissionFrequency(
-			frequency,
-			referenceFrequency,
-			HF_30m_HARDWARE_OUTPUT);
+	APRS_makeDirectTransmissionFrequency(frequency, referenceFrequency,
+	HF_30m_HARDWARE_OUTPUT);
 	// GFSK_init();
 }
 
 static void APRS_initDirectVHFTransmission(uint32_t frequency,
 		uint32_t referenceFrequency) {
 	APRS_makeDirectTransmissionFrequency(frequency, referenceFrequency,
-	DIRECT_2m_HARDWARE_OUTPUT);
+			DIRECT_2m_HARDWARE_OUTPUT);
 	AFSK_init();
 }
 
@@ -383,15 +430,8 @@ void APRS_endDirectTransmission() {
 	PLL_shutdown();
 }
 
-extern void APRS_marshallPositionMessage(uint16_t txDelay);
-extern void APRS_marshallStoredPositionMessage(LogRecord_t* record,
-		uint16_t txDelay);
-extern void APRS_marshallStatusMessage(uint32_t frequency,
-		uint32_t referenceFrequency, uint16_t txDelay);
-
-static void _APRS_transmitMessage(APRS_Band_t band,
-		APRS_MessageType_t messageType, LogRecord_t* storedMessage,
-		uint32_t frequency, uint32_t referenceFrequency) {
+void APRS_transmitMessage(APRS_Band_t band, APRS_MessageType_t messageType,
+		uint32_t frequency) {
 
 	const APRSTransmission_t* mode = &APRS_TRANSMISSIONS[band];
 
@@ -399,23 +439,22 @@ static void _APRS_transmitMessage(APRS_Band_t band,
 	case COMPRESSED_POSITION_MESSAGE:
 		APRS_marshallPositionMessage(mode->txDelay);
 		break;
-	case STORED_POSITION_MESSAGE:
-		APRS_marshallStoredPositionMessage(storedMessage, mode->txDelay);
+	case TELEMETRY_MESSAGE:
+		APRS_marshallTelemetryMessage(mode->txDelay);
 		break;
-	case STATUS_MESSAGE:
-		APRS_marshallStatusMessage(frequency, referenceFrequency,
-				mode->txDelay);
+	case TEXT_MESSAGE:
+		APRS_marshallTextMessage(mode->txDelay);
 		break;
 	}
 
-	LED_PORT->BSRR = LED_ON; // LED
+	LED_on();
 
 	// Prepare WFI
-	PWR->CR = (PWR->CR & ~3) | PWR_CR_ULP | PWR_CR_FWU;
+	PWR->CR = (PWR->CR & ~3); //| PWR_CR_FWU;
 	SCB->SCR &= ~4; // Don't STOP.
 
 	packet_cnt = 0;
-	mode->initTransmitter(frequency, referenceFrequency);
+	mode->initTransmitter(frequency, getCalibratedPLLOscillatorFrequency());
 
 	while (packet_cnt != packet_size) {
 		__WFI();
@@ -424,20 +463,6 @@ static void _APRS_transmitMessage(APRS_Band_t band,
 	// We are now done transmitting.
 	mode->shutdownTransmitter();
 
-	LED_PORT->BSRR = LED_OFF; // LED
-
-	trace_printf("Tx-end\n");
-}
-
-void APRS_transmitMessage(APRS_Band_t band, APRS_MessageType_t messageType,
-		uint32_t frequency, uint32_t referenceFrequency) {
-	_APRS_transmitMessage(band, messageType, (LogRecord_t*) 0, frequency,
-			referenceFrequency);
-}
-
-void APRS_transmitStoredMessage(APRS_Band_t band, LogRecord_t* storedMessage,
-		uint32_t frequency, uint32_t referenceFrequency) {
-	_APRS_transmitMessage(band, STORED_POSITION_MESSAGE, storedMessage,
-			frequency, referenceFrequency);
+	LED_off();
 }
 

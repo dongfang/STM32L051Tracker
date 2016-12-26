@@ -9,7 +9,6 @@
 #include "Globals.h"
 #include "APRS.h"
 #include "WorldMap.h"
-#include "Trace.h"
 
 static const APRSPolygonVertex_t boundary144390[] = BOUNDARY_144390;
 static const APRSPolygonVertex_t boundary144620[] = BOUNDARY_144620;
@@ -33,16 +32,16 @@ static const APRSPolygonVertex_t core145175[] = CORE_145175; // CORE_145175 has 
 //145525 missing
 static const APRSPolygonVertex_t core145575[] = CORE_145575;
 
-const APRSFrequencyRegion_t APRS_WORLD_MAP[] = { { .frequency = 144390,
-		.boundary = boundary144390, .core = core144390 }, { .frequency = 144620,
-		.boundary = boundary144620, .core = core144620 }, { .frequency = 144640,
-		.boundary = boundary144640, .core = core144640 }, { .frequency = 144660,
-		.boundary = boundary144660, .core = core144660 }, { .frequency = 144800,
-		.boundary = boundary144800, .core = core144800 }, { .frequency = 144930,
-		.boundary = boundary144930, .core = 0 }, { .frequency = 145010,
-		.boundary = boundary145010, .core = 0 }, { .frequency = 145175,
-		.boundary = boundary145175, .core = core145175 }, { .frequency = 145525,
-		.boundary = boundary145525, .core = 0 }, { .frequency = 145575,
+const APRSFrequencyRegion_t APRS_WORLD_MAP[] = { { .frequency = 144390000,
+		.boundary = boundary144390, .core = core144390 }, { .frequency = 144620000,
+		.boundary = boundary144620, .core = core144620 }, { .frequency = 144640000,
+		.boundary = boundary144640, .core = core144640 }, { .frequency = 144660000,
+		.boundary = boundary144660, .core = core144660 }, { .frequency = 144800000,
+		.boundary = boundary144800, .core = core144800 }, { .frequency = 144930000,
+		.boundary = boundary144930, .core = 0 }, { .frequency = 145010000,
+		.boundary = boundary145010, .core = 0 }, { .frequency = 145175000,
+		.boundary = boundary145175, .core = core145175 }, { .frequency = 145525000,
+		.boundary = boundary145525, .core = 0 }, { .frequency = 145575000,
 		.boundary = boundary145575, .core = core145575 }, };
 
 const uint8_t APRS_WORLD_MAP_LENGTH = sizeof(APRS_WORLD_MAP)
@@ -78,7 +77,7 @@ static boolean checkWithinPolygon(int16_t lat, int16_t lon,
 	return result;
 }
 
-boolean checkWithinRegion(int16_t lat, int16_t lon,const APRSFrequencyRegion_t* region) {
+static boolean checkWithinRegion(int16_t lat, int16_t lon,const APRSFrequencyRegion_t* region) {
 	boolean within = false;
 	uint16_t vertexIndex = 0;
 	//trace_printf("Trying region: %u\n", region->frequency);
@@ -89,7 +88,7 @@ boolean checkWithinRegion(int16_t lat, int16_t lon,const APRSFrequencyRegion_t* 
 	return within;
 }
 
-boolean checkWithinCore(int16_t lat, int16_t lon, const APRSFrequencyRegion_t* region) {
+static boolean checkWithinCore(int16_t lat, int16_t lon, const APRSFrequencyRegion_t* region) {
 	boolean within = false;
 	uint16_t vertexIndex = 0;
 	while (!within
@@ -99,7 +98,7 @@ boolean checkWithinCore(int16_t lat, int16_t lon, const APRSFrequencyRegion_t* r
 	return within;
 }
 
-void APRS_frequencies(int16_t lat, int16_t lon, boolean* frequenciesVector, boolean* isCoreVector) {
+static void APRS_frequencies(int16_t lat, int16_t lon, boolean* frequenciesVector, boolean* isCoreVector) {
 	for (int i = 0; i < APRS_WORLD_MAP_LENGTH; i++) {
 		boolean isWithinRegion = checkWithinRegion(lat, lon, APRS_WORLD_MAP+i);
 		if (isWithinRegion) {
@@ -142,15 +141,13 @@ void checkWorldMap_Orientation_Polygon(const APRSPolygonVertex_t* boundaryList,
 				- previousLonVector * nextLatVector;
 
 		if (cross < 0) {
-			trace_printf("Concave polygon near {%d,%d}\n", previousLon,
-					previousLat);
+			// trace_printf("Concave polygon near {%d,%d}\n", previousLon, previousLat);
 		}
 
 		previousLonVector = nextLonVector;
 		previousLatVector = nextLatVector;
 		if (--ttl == 0) {
-			trace_printf("Never ending loop near {%d,%d}\n", previousLon,
-					previousLat);
+			// trace_printf("Never ending loop near {%d,%d}\n", previousLon, previousLat);
 		}
 	} while (boundaryList[*index].lat != initialLat
 			|| boundaryList[*index].lon != initialLon);

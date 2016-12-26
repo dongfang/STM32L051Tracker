@@ -16,6 +16,23 @@ typedef uint8_t boolean;
 #define false 0
 
 typedef enum {
+	FLIGHT,
+	CALIBRATION,
+	GROUNDTEST
+} SysState_t;
+
+typedef enum {
+	VHF,
+	HF
+} APRS_Band_t;
+
+typedef enum {
+	COMPRESSED_POSITION_MESSAGE,
+	TELEMETRY_MESSAGE,
+	TEXT_MESSAGE
+} APRS_MessageType_t;
+
+typedef enum {
 	THIRTY_M,
 	TEN_M
 } WSPRBand_t;
@@ -68,17 +85,20 @@ typedef struct {
 	uint8_t ssid;
 } AX25_Address_t;
 
-#define APRS_LOG_NUM_RETRANSMISSIONS 3
+// #define APRS_LOG_NUM_RETRANSMISSIONS 3
 
 typedef struct {
-	uint16_t inIdx;
-	uint16_t outIdx[APRS_LOG_NUM_RETRANSMISSIONS];
+	uint16_t tailIdx;
+	uint16_t headIdx; //[APRS_LOG_NUM_RETRANSMISSIONS];
+//	uint16_t entryIdx;
+	Time_t lastLogTime;
+	uint16_t checksum;
 } LogRecordIndex_t;
 
 typedef struct {
-	int16_t trimOffset[32];
+	int16_t trimEffect[24];
 	uint32_t checksum;
-} PLLCtrlCalibration_t;
+} PLLTrimCalibration_t;
 
 typedef struct {
 	// Transmitter osc frequency measured at default trim
@@ -87,7 +107,7 @@ typedef struct {
 	uint16_t checksum;
 
 	// Temperature measured at
-	uint8_t temperature;
+	int8_t temperature;
 } CalibrationRecord_t;
 
 typedef struct {
@@ -99,9 +119,10 @@ typedef struct {
 	//2
 	int32_t lon;
 	//3
-	uint16_t status;
+	uint8_t speed_kts;
 	int8_t temperature;
 	uint8_t numHF;
+	uint8_t checksum;
 	//4
 } LogRecord_t;
 
@@ -111,13 +132,5 @@ typedef struct {
 	double odometer_nm;
 	uint16_t checksum;
 } Odometer_t;
-
-typedef struct {
-	size_t logRecordInIndex;
-	size_t logRecordOutHeadIndex;
-	size_t logRecordOutTailIndex;
-	uint16_t checksum;
-} FlightLog_t;
-
 
 #endif /* INC_TYPES_H_ */

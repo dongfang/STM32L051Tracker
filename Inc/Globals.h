@@ -9,12 +9,11 @@
 #define GLOBALS_H_
 
 #include "Types.h"
+#include "Setup.h"
 #include "NVM.h"
 #include "GPS.h"
 
-//extern NMEA_TimeInfo_t GPSTime;
-//extern NMEA_CRS_SPD_Info_t GPSCourseSpeed;
-//extern NMEA_StatusInfo_t GPSStatus;
+extern volatile uint32_t systime;
 
 extern Location_t GPSPosition;
 extern Location_t lastNonzeroPosition;
@@ -23,20 +22,22 @@ extern uint16_t lastGPSFixTime;
 extern uint16_t lastWSPRWindowWaitTime;
 extern boolean latestAPRSRegions[12]; 	 // 12 is sufficently large for the world map...
 extern boolean latestAPRSCores[12];	 // 12 is sufficently large for the world map...
-// extern const CalibrationRecord_t* currentCalibration;
-extern char scheduleName;
 
-extern float temperature;
-extern int8_t simpleTemperature;
-extern float batteryVoltage;
-extern float solarVoltage;
+extern int8_t temperature;
+extern float VDDa;
+extern float vBattery;
+extern float vSolar;
+
 extern float speed_kts;
 
-extern const LogRecord_t flashdata[NUM_LOG_RECORDS];
-extern const LogRecordIndex_t storedRecordIndex;
-extern const PLLCtrlCalibration_t pllCtrlCalibration;
-extern const FlightLog_t flightLog;
-extern const CalibrationRecord_t calibrationByTemperatureRanges[];
+extern SysState_t sysState;
+extern char currentTextMessage[64];
+
+extern volatile const LogRecord_t flashdata[NUM_LOG_RECORDS];
+extern volatile const LogRecordIndex_t flightLogIndex;
+extern volatile const CalibrationRecord_t calibrationByTemperatureRanges[];
+extern volatile const Odometer_t odometer;
+extern volatile const PLLTrimCalibration_t pllTrimCalibration;
 
 
 #endif /* GLOBALS_H_ */

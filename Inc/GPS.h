@@ -46,24 +46,23 @@ typedef struct {
 	float horizontalAccuracy;
 } NMEA_StatusInfo_t;
 
+typedef void(GPSStopFunctionInit_t)();
+typedef uint8_t(GPSStopFunction_t)(void*);
+
 #define BAUDRATE 9600
 
-void GPS_start();
-void GPS_stopListening();
-void GPS_shutdown();
-
-void GPS_powerUpInit();
-boolean GPS_isPowered();
-
-uint8_t GPS_waitForTimelock(uint32_t maxTime);
-uint8_t GPS_waitForPosition(uint32_t maxTime);
-uint8_t GPS_waitForPrecisionPosition(uint32_t maxTime);
+//void GPS_start();
+//void GPS_stopListening();
+//void GPS_shutdown();
+uint8_t GPSCycle_voltageLimited();
+uint8_t GPS_waitForTimelock(GPSStopFunctionInit_t* stopInit, GPSStopFunction_t* stopFunction, void* limit);
+uint8_t GPS_waitForPosition(GPSStopFunctionInit_t* stopInit, GPSStopFunction_t* stopFunction, void* limit);
+uint8_t GPS_waitForPrecisionPosition(GPSStopFunctionInit_t* stopInit, GPSStopFunction_t* stopFunction, void* limit);
 
 // Fake location to be remote from certain stuff
 void excludeZones(Location_t* location);
 
 extern DateTime_t GPSDateTime;
-extern uint8_t GPSDate;
 extern NMEA_CRS_SPD_Info_t GPSCourseSpeed;
 extern Location_t GPSPosition;
 extern NMEA_StatusInfo_t GPSStatus;

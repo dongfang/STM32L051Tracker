@@ -8,11 +8,9 @@
 #ifndef PRECISIONTIMER_H_
 #define PRECISIONTIMER_H_
 
-#define MAX_NUM_CAPTURE_VALUES 10
+//#define MAX_NUM_CAPTURE_VALUES 10
+//extern volatile uint32_t PT_extendedCaptureValue;
 
-extern volatile uint32_t PT_extendedCaptureValue;
-
-double measurePeriod(TimerMeasurement_t inputSelect, uint32_t numRTCCycles);
-uint32_t directPLLGPScalibration(uint8_t numCycles);
+double measurePeriod(TimerMeasurement_t inputSelect, uint32_t numRTCCycles, uint32_t maxTimeMillis);
 
 #endif /* PRECISIONTIMER_H_ */
