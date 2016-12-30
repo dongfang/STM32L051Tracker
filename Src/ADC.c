@@ -17,6 +17,7 @@ float VDDa;
 int8_t temperature  __attribute__((section (".noinit")));
 float vBattery  __attribute__((section (".noinit")));
 float vSolar  __attribute__((section (".noinit")));
+uint8_t isADCUsingHSI;
 
 uint16_t ADC_measure(int channel);
 
@@ -64,6 +65,8 @@ void ADC_updateVoltages() {
  * ADC volt. reg. disabled, STOP mode, ... no prob.
  */
 int ADC_init() {
+	isADCUsingHSI =1;
+
 	RCC->CR = RCC_CR_HSION;
 		while (!(RCC->CR & RCC_CR_HSIRDY)) {
 	}
@@ -133,4 +136,5 @@ void ADC_shutdown() {
 
 	// This SHOULD not cause the clock to stop if uses as sysclock.
 	RCC->CR &= ~RCC_CR_HSION;
+	isADCUsingHSI = 0;
 }

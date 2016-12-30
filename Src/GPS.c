@@ -106,6 +106,7 @@ uint8_t GPS_waitForTimelock(GPSStopFunctionInit_t* stopInit,
 
 	do {
 		GPS_getData();
+		// volatile uint32_t uart1ClockSource = RCC->CCIPR & RCC_CCIPR_USART1SEL;
 		flashNumSatellites(GPSStatus.numberOfSatellites);
 		// trace_printf("now %02d:%02d:%02d tvalid %d, dvalid %d\n", GPSTime.time.hours, GPSTime.time.minutes, GPSTime.time.seconds, GPSTime.time.valid, GPSTime.date.valid);
 		timer_sleep(250);
@@ -224,21 +225,33 @@ void GPS_shutdown() {
 	// PWR_stopDevice(E_DEVICE_GPS);
 }
 
-void GPSCycle_timeLimited() {
+uint8_t GPSCycle_timeLimited() {
 	uint32_t gpsTimeout = 100000;
 	uint32_t gpsstart = systime;
+	uint8_t result = 0;
+
 	GPS_start();
+
 	if (GPS_waitForTimelock(GPSTimeoutStopFunctionInit, GPSTimeoutStopFunction,
 			&gpsTimeout)) {
 		RTC_set(&GPSDateTime.time);
+		result = 1;
 	}
 
-	GPS_waitForPrecisionPosition(GPSTimeoutStopFunctionInit,
-			GPSTimeoutStopFunction, &gpsTimeout);
-	lastGPSFixTime = (systime - gpsstart) / 1000;
-	calibratePLLFrequency();
+	if (GPS_waitForPrecisionPosition(GPSTimeoutStopFunctionInit,
+			GPSTimeoutStopFunction, &gpsTimeout)) {
+		lastGPSFixTime = (systime - gpsstart) / 1000;
+		calibratePLLFrequency();
+		result = 2;
+	}
 
-	GPS_powerOff();
+	GPS_shutdown();
+
+	if (result == 2) {
+		recordFlightLog();
+	}
+
+	return result;
 }
 
 uint8_t GPSCycle_voltageLimited() {
@@ -246,6 +259,7 @@ uint8_t GPSCycle_voltageLimited() {
 	uint32_t gpsstart = systime;
 	uint8_t result = 0;
 
+	switchTo2MHzMSI();
 	GPS_start();
 
 	if (GPS_waitForTimelock(GPSVoltageStopFunctionInit, GPSVoltageStopFunction,
@@ -257,8 +271,12 @@ uint8_t GPSCycle_voltageLimited() {
 	if (GPS_waitForPrecisionPosition(GPSVoltageStopFunctionInit,
 			GPSVoltageStopFunction, &cutoffVoltage)) {
 		lastGPSFixTime = (systime - gpsstart) / 1000;
-		calibratePLLFrequency();
 		result = 2;
+	}
+
+	if (result == 2) {
+		switchTo8MHzHSI();
+		calibratePLLFrequency();
 	}
 
 	GPS_shutdown();

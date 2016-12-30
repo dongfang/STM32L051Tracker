@@ -73,7 +73,7 @@ void WSPRModulationLoop() {
 	NVIC_EnableIRQ(TIM22_IRQn);
 
 	// Prepare WFI
-	PWR->CR = (PWR->CR & ~3) | PWR_CR_FWU;
+	PWR->CR = (PWR->CR & ~3); // no LPRUN and no deepsleep.
 	SCB->SCR &= ~4; // Don't STOP.
 
 	TIM22Updated = 0;

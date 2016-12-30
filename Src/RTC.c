@@ -10,7 +10,6 @@
 #include "RTC.h"
 
 void RTC_init() {
-	// Turn on clock domain (we don't bother to turn it back off...)
 	RCC->APB1ENR |= RCC_APB1ENR_PWREN;
 
 	// Turn off backup domain write protect.
@@ -105,6 +104,7 @@ void RTC_set(Time_t* time) {
 void RTC_scheduleWakeup(uint16_t eachNSec) {
 	// EXTI Line 20 to be sensitive to rising edges (Interrupt or Event modes)
 	// EXTI->PR |= 1<<20; this clearing is done automatically next line.
+	// RCC->APB1ENR |= RCC_APB2ENR_
 	EXTI->RTSR |= 1 << 20;
 	EXTI->EMR |= 1 << 20; // unmask
 
@@ -123,10 +123,12 @@ void RTC_scheduleWakeup(uint16_t eachNSec) {
 void RTC_scheduleAlarmA(Time_t* time) {
 	// EXTI Line 17 to be sensitive to rising edges (Interrupt or Event modes)
 	// EXTI->PR |= 1<<17; this clearing is done automatically next line.
-	EXTI->RTSR |= 1 << 17;
+
+	EXTI->RTSR |= 1 << 17; // rising edge selected.
 	EXTI->EMR |= 1 << 17; // unmask
 
 	NVIC_EnableIRQ(RTC_IRQn);
+	NVIC_SetPriority(RTC_IRQn, 2);
 
 	RTC_unlock();
 
@@ -153,6 +155,7 @@ void RTC_scheduleAlarmB(Time_t* time) {
 
 	// Wakeup seems to work great but I never get an IRQ...
 	NVIC_EnableIRQ(RTC_IRQn);
+	NVIC_SetPriority(RTC_IRQn, 2);
 
 	RTC_unlock();
 	// From 26.3.7 in reference manual.
@@ -218,10 +221,19 @@ void RTC_nextModoloMinutes(Time_t* time, uint8_t modulo, uint8_t offset) {
 	}
 }
 
-void RTC_backupExperiment() {
+uint32_t RTC_readBackupRegister(uint8_t index) {
 	RTC_unlock();
-//	trace_printf("Backup is: %d\n", RTC->BKP0R);
-	RTC->BKP0R += 1;
+	uint32_t* ptr = &RTC->BKP0R;
+	uint32_t result = *(ptr + index);
+	RTC_lock();
+	return result;
+}
+
+void RTC_writeBackupRegister(uint8_t index, uint32_t data) {
+	RTC_unlock();
+	uint32_t* ptr = &RTC->BKP0R;
+	*(ptr + index) = data;
+	RTC_lock();
 }
 
 volatile uint8_t RTCHandlerFlag;

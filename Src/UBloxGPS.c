@@ -36,10 +36,10 @@ enum {
 
 #define GPS_CONF_RESEND_INTERVAL 5000
 
-static uint8_t dataindex;
-static uint8_t commaindex;
-static uint8_t state;
-static uint8_t commitCheck;
+static uint8_t state; // this should be inited.
+static __attribute__((section (".noinit"))) uint8_t dataindex;
+static __attribute__((section (".noinit"))) uint8_t commaindex;
+static __attribute__((section (".noinit"))) uint8_t commitCheck;
 
 // static uint8_t _UBX_POLL_NAV5_MESSAGE[] = UBX_POLL_NAV5_MESSAGE;
 static uint8_t _UBX_INIT_NAV5_MESSAGE[] = UBX_INIT_NAV5_MESSAGE;
@@ -54,38 +54,37 @@ static UBX_MESSAGE INIT_NAV_MESSAGE = { sizeof(_UBX_INIT_NAV5_MESSAGE),
 // interrupt handler.
 // Interested consumers should disable interrupts, copy the unsafes into a their locally
 // managed safe copies and re-enable interrupts.
-volatile DateTime_t nmeaTimeInfo_unsafe;
-volatile NMEA_CRS_SPD_Info_t nmeaCRSSPDInfo_unsafe;
-volatile Location_t nmeaPositionInfo_unsafe;
-volatile NMEA_StatusInfo_t nmeaStatusInfo_unsafe;
+volatile __attribute__((section (".noinit"))) DateTime_t nmeaTimeInfo_unsafe;
+volatile __attribute__((section (".noinit"))) NMEA_CRS_SPD_Info_t nmeaCRSSPDInfo_unsafe;
+volatile __attribute__((section (".noinit"))) Location_t nmeaPositionInfo_unsafe;
+volatile __attribute__((section (".noinit"))) NMEA_StatusInfo_t nmeaStatusInfo_unsafe;
 
 uint8_t nmea_parse(char c);
 
-static UBX_MESSAGE* currentSendingMessage;
-static int8_t currentSendingIndex;
-static uint8_t currentChecksumA;
-static uint8_t currentChecksumB;
+static volatile UBX_MESSAGE* currentSendingMessage;
+static __attribute__((section (".noinit"))) int8_t currentSendingIndex;
+static __attribute__((section (".noinit"))) uint8_t currentChecksumA;
+static __attribute__((section (".noinit"))) uint8_t currentChecksumB;
 
-static uint8_t readClassId;
-static uint8_t readMessageId;
-static uint16_t readBodyLength;
-static uint16_t readBodyCnt;
+static __attribute__((section (".noinit"))) uint8_t readClassId;
+static __attribute__((section (".noinit"))) uint8_t readMessageId;
+static __attribute__((section (".noinit"))) uint16_t readBodyLength;
+static __attribute__((section (".noinit"))) uint16_t readBodyCnt;
 
-static uint8_t ackedClassId;
-static uint8_t ackedMessageId;
+static __attribute__((section (".noinit"))) uint8_t ackedClassId;
+static __attribute__((section (".noinit"))) uint8_t ackedMessageId;
 static uint32_t lastSendConfigurationTime;
-static boolean navSettingsConfirmed;
+
+boolean navSettingsConfirmed;
 
 static void sendToGPS(uint8_t data) {
 	USART2->TDR = data;
 }
 
-void GPS_transmit() {
-	if (currentSendingMessage == NULL) {
-		USART2->CR1 &= ~USART_CR1_TXEIE;
-		return;
-	}
+volatile uint8_t ca;
+volatile uint8_t cb;
 
+void GPS_transmit() {
 	if (currentSendingIndex == -2) {
 		sendToGPS(0xB5);
 		currentSendingIndex++;
@@ -94,16 +93,16 @@ void GPS_transmit() {
 		currentSendingIndex++;
 	} else if (currentSendingIndex < currentSendingMessage->length) {
 		uint8_t data = currentSendingMessage->message[currentSendingIndex];
+		currentSendingIndex++;
+		if (currentSendingIndex == currentSendingMessage->length) {
+			currentSendingMessage = NULL;
+			USART2->CR1 &= ~(USART_CR1_TXEIE);
+		}
 		sendToGPS(data);
-		currentChecksumA += data;
-		currentChecksumB += currentChecksumA;
-		currentSendingIndex++;
-	} else if (currentSendingIndex == currentSendingMessage->length) {
-		sendToGPS(currentChecksumA);
-		currentSendingIndex++;
-	} else if (currentSendingIndex == currentSendingMessage->length + 1) {
-		sendToGPS(currentChecksumB);
-		currentSendingMessage = NULL;
+		// currentChecksumA += data;
+		// currentChecksumB += currentChecksumA;
+	} else {
+		currentSendingMessage = NULL; // how did we end up here?
 	}
 }
 
@@ -122,7 +121,7 @@ void USART2_IRQHandler() {
 	if (stat & USART_ISR_RXNE) {
 		uint16_t rxd = USART2->RDR;
 		nmea_parse(rxd);
-	} if (stat & USART_ISR_TXE) {
+	} if ((stat & USART_ISR_TXE) && (currentSendingMessage != NULL)) {
 		GPS_transmit();
 	}
 }
@@ -291,15 +290,15 @@ static void parseInt8(char c, uint8_t* value) {
 	*value += digit;
 }
 
-static double tempLat;
-static double tempLon;
-static float tempFloat;
-static float tempFloat2;
-static Time_t tempTime;
-static Date_t tempDate;
-static char tempChar;
-static uint8_t tempU8;
-static uint8_t tempU82;
+static __attribute__((section (".noinit"))) double tempLat;
+static __attribute__((section (".noinit"))) double tempLon;
+static __attribute__((section (".noinit"))) float tempFloat;
+static __attribute__((section (".noinit"))) float tempFloat2;
+static __attribute__((section (".noinit"))) Time_t tempTime;
+static __attribute__((section (".noinit"))) Date_t tempDate;
+static __attribute__((section (".noinit"))) char tempChar;
+static __attribute__((section (".noinit"))) uint8_t tempU8;
+static __attribute__((section (".noinit"))) uint8_t tempU82;
 
 static void parseGPVTG(char c) {
 	static uint8_t state;
@@ -683,20 +682,28 @@ uint8_t nmea_parse(char c) {
 			state = STATE_IDLE;
 		break;
 	case STATE_READ_BINARY_UBX_CLASS_ID:
-		readClassId = c;
+		readClassId = c; // should be 06 for echo of command, or 05 for the ack-ack
 		state = STATE_READ_BINARY_UBX_MSG_ID;
 		break;
 	case STATE_READ_BINARY_UBX_MSG_ID:
-		readMessageId = c;
+		readMessageId = c; // should be 24 or 01 for ack-ack
 		state = STATE_READ_BINARY_UBX_MSG_LEN1;
 		break;
 	case STATE_READ_BINARY_UBX_MSG_LEN1:
-		readBodyLength = c;
+		readBodyLength = c; // 02
 		state = STATE_READ_BINARY_UBX_MSG_LEN2;
 		break;
 	case STATE_READ_BINARY_UBX_MSG_LEN2:
-		readBodyLength += (c << 8);
+		readBodyLength += (c << 8); // 0
 #ifdef TRACE_GPS
+		b5 62
+		05 01
+		02 00
+		06 24
+		32 5b
+		24 47
+		50
+		00001a0 52 4d 43 2c 2c 56 2c 2c 2c 2c 2c 2c 2c 2c 2c 2c
 		trace_printf("UBX response is class %d msg %d length %d\n", readClassId, readMessageId, readBodyLength);
 #endif
 		readBodyCnt = 0;
@@ -704,9 +711,9 @@ uint8_t nmea_parse(char c) {
 		break;
 	case STATE_READ_BINARY_UBX_MSG_BODY:
 		if (readBodyCnt == 0 && readClassId == 5 && readMessageId == 1) {
-			ackedClassId = c;
+			ackedClassId = c; // 06
 		} else if (readBodyCnt == 1 && readClassId == 5 && readMessageId == 1) {
-			ackedMessageId = c;
+			ackedMessageId = c; // 24
 		}
 		readBodyCnt++;
 		if (readBodyCnt == readBodyLength)
@@ -769,7 +776,12 @@ void GPS_start() {
 	GPIOA->AFR[0] = (GPIOA->AFR[0] & ~(15 << (4 * 2))) | (4 << (4 * 2));
 	GPIOA->AFR[0] = (GPIOA->AFR[0] & ~(15 << (4 * 3))) | (4 << (4 * 3));
 
+#ifdef USE_MSI_WHILE_GPS
+	calibrateMSI(MSI_WHILE_GPS_SPEED);
+	uint32_t brr = MSI_WHILE_GPS_SPEED / 9600;
+#else
 	uint32_t brr = 16E6 / 9600;
+#endif
 	USART2->BRR = brr;
 
 	NVIC_SetPriority(USART2_IRQn, 1);
@@ -778,7 +790,7 @@ void GPS_start() {
 	// Don't care about overrun detect (what can we do anyway)
 	USART2->CR3 |= USART_CR3_OVRDIS;
 	// Enable transmitter, and the usart itself.
-	USART2->CR1 = USART_CR1_RE | USART_CR1_UE | USART_CR1_RXNEIE;
+	USART2->CR1 = USART_CR1_TE | USART_CR1_RE | USART_CR1_UE | USART_CR1_RXNEIE;
 
 	state = STATE_IDLE;
 }

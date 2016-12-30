@@ -31,7 +31,7 @@ extern const uint8_t WSPR_LOWALT_SCHEDULE[];
 extern const uint8_t WSPR_LOWALT_SCHEDULE_LENGTH;
 
 void doWSPR(WSPRBand_t band);
-void prepareWSPRMessage(WSPR_MESSAGE_TYPE messageType, float txVoltage);
+void prepareWSPRMessage(WSPR_MESSAGE_TYPE messageType);
 void WSPR_Transmit(WSPRBand_t band);
 uint8_t WSPR_getSymbol(uint8_t i);
 

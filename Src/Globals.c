@@ -16,8 +16,8 @@ const AX25_Address_t APRS_DIGI2 = {"",0};
 
 const char WSPR_CALLSIGN[] = WSPR_CALL;
 
-boolean latestAPRSRegions[12]; 	 // 12 is sufficently large for the world map...
-boolean latestAPRSCores[12];	 // 12 is sufficently large for the world map...
+boolean latestAPRSRegions[12]; 	 // 12 is sufficently large for the world map... and yes these ARE inited to zero.
+boolean latestAPRSCores[12];	 // 12 is sufficently large for the world map... and yes these ARE inited to zero.
 
 float speed_kts  __attribute__((section (".noinit")));
 

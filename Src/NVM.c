@@ -165,7 +165,7 @@ uint16_t playbackFlightLog(APRS_Band_t band, uint32_t frequency) {
 	if (n) {
 		if (n < 0)
 			n += NUM_LOG_RECORDS;
-		currentTextMessage[0] = '+';
+		currentTextMessage[0] = '}'; // this is the only allowed char which is not also a base-91 one. Perfect.
 		char* buf = currentTextMessage + 1;
 		uint16_t linearIdx = 0;
 		rand += temperature * VDDa * 1024;

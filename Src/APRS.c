@@ -230,7 +230,7 @@ void APRS_marshallTelemetryMessage(uint16_t txDelay) {
 
 	char* buf = currentTextMessage;
 	*buf++ = 'q';
-	buf = printInteger(buf, statusMessageSequence);
+	buf = printInteger(buf, statusMessageSequence++);
 
 	*buf++ = ',';
 	*buf++ = 'a';
@@ -261,6 +261,10 @@ void APRS_marshallTelemetryMessage(uint16_t txDelay) {
 	*buf++ = ',';
 	*buf++ = 'x';
 	buf = printInteger(buf, pllXtalDiff);
+
+	*buf++ = ',';
+	*buf++ = 'm';
+	buf = printInteger(buf, MSITrim);
 	/*
 	 sprintf(temp, ",f%lu", txFrequency / 1000);
 	 ax25_send_string(temp);

@@ -7,6 +7,7 @@
 #include "Globals.h"
 #include "Types.h"
 #include "Setup.h"
+#include "Power.h"
 
 static uint8_t losslessCompressedBuf[11];
 uint8_t convolutionalBuf[21]  __attribute__((section (".noinit")));
@@ -397,23 +398,37 @@ uint8_t WSPR_getSymbol(uint8_t i) {
   return sym;
 }
 
-static uint8_t fake_dBm(float voltage) {
+static const uint8_t powerLevels[] =
+{0, 3, 7, 10, 13, 17, 20, 23, 27, 30, 33, 37};
+
+static uint8_t fake_dBm_batteryVoltage() {
 	// All others cause failure to report position or something, in WSPR program.
-	static const uint8_t powerLevels[] =
-	{0, 3, 7, 10, 13, 17, 20, 23, 27, 30, 33, 37};
+	// battery range
 	// 10 (0.01W)= 3   .. 3.9
 	// 13 (0.02W)= 3.9 .. 4.0
 	// 17 (0.05W)= 4.0 .. 4.1
 	// 20 (0.1W) = 4.1 .. 4.2
 	// 23 (0.2W) = 4.2 ..
-	int8_t index = (voltage - 3.8) * 10;
+	int8_t index = (vBattery - 3.8) * 10;
 	if (index < 0) return 0;
 	if (index >= sizeof(powerLevels)) return 37;
 	return powerLevels[index];
 }
 
-void prepareWSPRMessage(WSPR_MESSAGE_TYPE messageType, float voltage) {
-    uint8_t power = fake_dBm(voltage);
+static uint8_t fake_dBm_speed() {
+	// 10 (0.01W)= 0   .. 20
+	// 13 (0.02W)= 20 ..  40
+	// 17 (0.05W)= 40 ..  60
+	// 20 (0.1W) = 60 ..  80
+	// 23 (0.2W) = 80 ..
+	int8_t index = speed_kts/20;
+	if (index < 0) return 0;
+	if (index >= sizeof(powerLevels)) return 37;
+	return powerLevels[index];
+}
+
+void prepareWSPRMessage(WSPR_MESSAGE_TYPE messageType) {
+    uint8_t power = fake_dBm_speed();
     // trace_printf("type: %d\n", messageType);
   switch (messageType) {
   case TYPE1:
@@ -440,7 +455,7 @@ void doWSPR(WSPRBand_t band) {
 		nextWSPRMessageType = WSPR_SCHEDULE[nextWSPRMessageTypeIndex];
 	}
 
-	prepareWSPRMessage(nextWSPRMessageType, vBattery);
+	prepareWSPRMessage(nextWSPRMessageType);
 	nextWSPRMessageTypeIndex++;
 	WSPR_Transmit(THIRTY_M);
 

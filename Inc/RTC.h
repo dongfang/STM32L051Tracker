@@ -26,4 +26,7 @@ int timeAfter_seconds(Time_t* from, Time_t* to);
 //int timeDiffModulo24(Time_t* from, Time_t* to);
 void RTC_nextModoloMinutes(Time_t* time, uint8_t modulo, uint8_t offset);
 
+uint32_t RTC_readBackupRegister(uint8_t index);
+void RTC_writeBackupRegister(uint8_t index, uint32_t data);
+
 #endif /* RTC_H_ */

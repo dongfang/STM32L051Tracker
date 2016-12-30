@@ -8,7 +8,9 @@
 #ifndef POWER_H_
 #define POWER_H_
 
-void setRuntimeClocks();
-void sleepSpeedConfig();
+#include "Types.h"
 
+void switchTo8MHzHSI();
+void switchTo1MHzMSI();
+void calibrateMSI(uint32_t fDesired);
 #endif /* POWER_H_ */

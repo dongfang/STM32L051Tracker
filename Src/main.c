@@ -26,7 +26,6 @@ void initGeneralIOPorts() {
 	SET_BIT(RCC->IOPENR, RCC_IOPENR_GPIOAEN);
 	SET_BIT(RCC->IOPENR, RCC_IOPENR_GPIOBEN);
 
-	// GPS is off.
 	GPIOA->BSRR = (1 << 7) | (1 << 15); // Turn off GPS and transmitter in advance.
 
 	// Modulation voltage divider is off.
@@ -34,7 +33,8 @@ void initGeneralIOPorts() {
 
 	// GPS control and transmitter control are output open drain.
 	GPIOA->OTYPER |= (1 << 7) | (1 << 15); // GPS power and HF voltage divider are open drain.
-	GPIOA->MODER = (GPIOA->MODER & ~((3 << (7 * 2)) | (3 << (15 * 2)))) | ((1 << (7 * 2)) | (1 << (15 * 2)));
+	GPIOA->MODER = (GPIOA->MODER & ~((3 << (7 * 2)) | (3 << (15 * 2))))
+			| ((1 << (7 * 2)) | (1 << (15 * 2)));
 
 	// Modulation voltage divider
 	// GPIOB->BRR = 1<<8; // default anyway.
@@ -96,19 +96,16 @@ void selfCalibrate() {
 int main(void) {
 	initGeneralIOPorts();
 
+	//setMediumPerformanceCoreVoltage();
+	//setHighPerformanceCoreVoltage();
+
+	PLL_shutdown();
+
 	sysState = isGroundTestOption() ? GROUNDTEST :
 				isCalibrateOption() ? CALIBRATION : FLIGHT;
 
 	LED_init(sysState == FLIGHT);
 
-#if defined(TRACE)
-	trace_initialize();
-	trace_printf("Start\n");
-#endif
-
-	// setRuntimeClocks();
-	PLL_shutdown();
-	NVIC_SetPriority(RTC_IRQn, 2);
 	RTC_init();
 
 	// }
@@ -123,30 +120,38 @@ int main(void) {
 	static uint8_t clockWasSet;
 
 	while (1) {
-		// setRuntimeClocks(); // TODO: Potential energy improvement - do ADC on slow clocks.
 		ADC_init();
+		switchTo2MHzMSI(); // just to get systick going.
+
 		ADC_measureVddAndTemperature();
 		ADC_updateVoltages();
 
-		float energy = vBattery + vSolar;
+	    float energy = vBattery + vSolar/2;
 
-		if (energy >= 2.85) {
-			setRuntimeClocks();
+		if (energy >= 2.70) {
 			if (gpsOrWSPR) {
+				// Do WSPR. First, do some APRS blah blah to kill time. Seriously, that's why.
+				switchTo8MHzHSI();
 				uint8_t sentOne = 0;
 				for (uint8_t i = 0; i < sizeof(latestAPRSRegions); i++) {
 					if (latestAPRSRegions[i]) {
 						APRS_transmitMessage(VHF, TELEMETRY_MESSAGE,
-								APRS_WORLD_MAP[i].frequency); sentOne = true;
+								APRS_WORLD_MAP[i].frequency);
+						sentOne = true;
 						break;
 					}
 				}
 				if (!sentOne) {
-					APRS_transmitMessage(VHF, TELEMETRY_MESSAGE, DIAGNOSTICS_APRS_FREQUENCY);
+					APRS_transmitMessage(VHF, TELEMETRY_MESSAGE,
+					DIAGNOSTICS_APRS_FREQUENCY);
 				}
+
 				if (clockWasSet) {
+					switchTo2MHzMSI();
 					doWSPR(THIRTY_M);
 					ADC_updateVoltages();
+
+					switchTo8MHzHSI();
 					for (uint8_t i = 0; i < sizeof(latestAPRSRegions); i++) {
 						if (latestAPRSRegions[i]) {
 							APRS_transmitMessage(VHF, TELEMETRY_MESSAGE,
@@ -156,9 +161,12 @@ int main(void) {
 					}
 				}
 			} else {
+				switchTo2MHzMSI();
 				if (GPSCycle_voltageLimited()) {
+				//  if (1) {
 					clockWasSet = true;
 
+					switchTo8MHzHSI();
 					APRS_frequenciesFromPosition(&lastNonzeroPosition,
 							latestAPRSRegions, latestAPRSCores);
 
@@ -171,54 +179,54 @@ int main(void) {
 					}
 				}
 			}
-			// Log playback irrespective of whether gps or aprs, hm.
-			gpsOrWSPR = !gpsOrWSPR;
-			for (uint8_t i = 0; i < sizeof(latestAPRSCores); i++) {
-				if (latestAPRSCores[i]) {
-					uint8_t m = 0;
-					while (m < 4
-							&& m
-									< playbackFlightLog(VHF,
-											APRS_WORLD_MAP[i].frequency) / 4)
-						m++;
-				}
-			}
-			sleepSpeedConfig();
 		}
 
+		// Log playback irrespective of whether gps or aprs, hm.
+		gpsOrWSPR = !gpsOrWSPR;
+
+		switchTo8MHzHSI();
+		for (uint8_t i = 0; i < sizeof(latestAPRSCores); i++) {
+			if (latestAPRSCores[i]) {
+				uint8_t m = 0;
+				while (m < 3
+						&& m
+								< playbackFlightLog(VHF,
+										APRS_WORLD_MAP[i].frequency) / 3)
+					m++;
+			}
+		}
+
+		switchTo2MHzMSI();
 		ADC_shutdown();
 
 		RTC_read(&alarmTime);
-		RTC_nextModoloMinutes(&alarmTime, 10, 2);
+		RTC_nextModoloMinutes(&alarmTime, 4, 0);
 		RTC_scheduleAlarmA(&alarmTime);
+
+		/*
+		 * SCR:
+		 * Bit4: Whether non enabled interrupts can wake up from WFE
+		 * Bit2: SLEEPDEEP
+		 * Bit1: SLEEPONEXIT (handler-only mode)
+		 */
 
 		if (sysState == FLIGHT) {
 			PWR->CR = (PWR->CR & ~3) | PWR_CR_LPSDSR | PWR_CR_ULP | PWR_CR_FWU;
-			SCB->SCR |= 4;
-			while (true) {
-				uint32_t isr;
-				do {
-					__WFE();
-					isr =
-					RTC->ISR & (RTC_ISR_WUTF | RTC_ISR_ALRAF | RTC_ISR_ALRBF);
-				} while (!isr);
+			SCB->SCR |= 4; // Deep sleep.
+			uint32_t isr;
+			do {
+				__WFE();
+				isr = RTC->ISR & (RTC_ISR_WUTF | RTC_ISR_ALRAF | RTC_ISR_ALRBF);
+			} while (!isr);
 
-				RTC->ISR &= ~isr;
-			}
+			RTC->ISR &= ~isr;
 		} else {
 			PWR->CR = (PWR->CR & ~3) | PWR_CR_LPSDSR | PWR_CR_ULP | PWR_CR_FWU;
-			SCB->SCR &= ~4;
-			uint8_t isr;
-			volatile Time_t time;
+			SCB->SCR &= ~4; // do not deepsleep.
+			uint32_t isr;
 			do {
-				//__WFI();
-				RTC_read(&time);
-				// volatile uint32_t cr = RTC->CR;// |= RTC_CR_ALRAE | RTC_CR_ALRAIE
 				isr = RTC->ISR & (RTC_ISR_WUTF | RTC_ISR_ALRAF | RTC_ISR_ALRBF);
-				// } while (!isr);
-			} while (time.hours != alarmTime.hours
-					|| time.minutes != alarmTime.minutes
-					|| time.seconds != alarmTime.seconds);
+			} while (!isr);
 		}
 	}
 }

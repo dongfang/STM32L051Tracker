@@ -71,7 +71,10 @@ typedef struct {
 } Location_t;
 
 typedef enum {
-	RTC_CYCLES_PER_GPS_CYCLE, RTC_CYCLES_PER_PLL_CYCLE, PLL_CYCLES_PER_GPS_CYCLE
+	RTC_CYCLES_PER_GPS_CYCLE,
+	RTC_CYCLES_PER_PLL_CYCLE,
+	PLL_CYCLES_PER_GPS_CYCLE,
+	HSI_CYCLES_PER_RTC_CYCLE
 } TimerMeasurement_t;
 
 // Whether we are in an APRS core zone (where we can expect to be received) or not.

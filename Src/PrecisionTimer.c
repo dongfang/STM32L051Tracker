@@ -85,8 +85,6 @@ volatile uint8_t PT_captureState  __attribute__((section (".noinit")));
  */
 
 static void setupGPIO(TimerMeasurement_t inputSelect) {
-	RCC->APB2ENR |= RCC_APB2ENR_TIM22EN;
-
 	// Reset the TIM22 periph if we feel so inclined.
 	// RCC->APB2RSTR |= RCC_APB2RSTR_TIM22RST;
 	// RCC->APB2RSTR &= ~RCC_APB2RSTR_TIM22RST;
@@ -145,7 +143,6 @@ double measurePeriod(TimerMeasurement_t inputSelect, uint32_t minResolution,
 	// CC1 is input and is thus called IC1. It is mapped to TI1.
 	TIM22->CCMR1 |= TIM_CCMR1_CC1S_0;
 
-	// If measuring PLL, prescale by 8.
 	switch (inputSelect) {
 	case RTC_CYCLES_PER_PLL_CYCLE:
 	case RTC_CYCLES_PER_GPS_CYCLE:
@@ -174,6 +171,13 @@ double measurePeriod(TimerMeasurement_t inputSelect, uint32_t minResolution,
 		// No prescaler
 		TIM22->CCMR1 &= ~TIM_CCMR1_IC1PSC;
 		break;
+
+	case HSI_CYCLES_PER_RTC_CYCLE:
+		// Set up capture input (PA6). CC1 enable.
+		TIM22->CCER |= TIM_CCER_CC1E;	// enable capture input 1
+
+		// No prescaler
+		TIM22->CCMR1 &= ~TIM_CCMR1_IC1PSC;
 	}
 
 	NVIC_SetPriority(TIM22_IRQn, 0);
@@ -231,4 +235,6 @@ double measurePeriod(TimerMeasurement_t inputSelect, uint32_t minResolution,
 
 	return result;
 }
+
+// uint32_t HSICyclesPerRTCCycle()
 
