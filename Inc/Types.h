@@ -124,7 +124,7 @@ typedef struct {
 	//3
 	uint8_t speed_kts;
 	int8_t temperature;
-	uint8_t numHF;
+	uint8_t course;
 	uint8_t checksum;
 	//4
 } LogRecord_t;
@@ -133,6 +133,9 @@ typedef struct {
 	Position_t lastOdometeredPosition;
 	Time_t lastOdometerTime;
 	double odometer_nm;
+	float course;
+	float speed_kts;
+	float altitude;
 	uint16_t checksum;
 } Odometer_t;
 

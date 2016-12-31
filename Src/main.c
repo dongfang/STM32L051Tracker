@@ -117,18 +117,18 @@ int main(void) {
 	RTC_scheduleAlarmB(&alarmTime);
 
 	static uint8_t gpsOrWSPR;
-	static uint8_t clockWasSet;
+	// static uint8_t clockWasSet;
 
 	while (1) {
 		ADC_init();
-		switchTo2MHzMSI(); // just to get systick going.
+		switchTo1MHzMSI(); // just to get systick going.
 
 		ADC_measureVddAndTemperature();
 		ADC_updateVoltages();
 
 	    float energy = vBattery + vSolar/2;
 
-		if (energy >= 2.70) {
+		if (energy >= 2.75) {
 			if (gpsOrWSPR) {
 				// Do WSPR. First, do some APRS blah blah to kill time. Seriously, that's why.
 				switchTo8MHzHSI();
@@ -146,8 +146,7 @@ int main(void) {
 					DIAGNOSTICS_APRS_FREQUENCY);
 				}
 
-				if (clockWasSet) {
-					switchTo2MHzMSI();
+				if (RTC_readBackupRegister(0)) {
 					doWSPR(THIRTY_M);
 					ADC_updateVoltages();
 
@@ -161,10 +160,10 @@ int main(void) {
 					}
 				}
 			} else {
-				switchTo2MHzMSI();
+				switchTo1MHzMSI();
 				if (GPSCycle_voltageLimited()) {
 				//  if (1) {
-					clockWasSet = true;
+					RTC_writeBackupRegister(0, 1);
 
 					switchTo8MHzHSI();
 					APRS_frequenciesFromPosition(&lastNonzeroPosition,
@@ -196,11 +195,11 @@ int main(void) {
 			}
 		}
 
-		switchTo2MHzMSI();
+		switchTo1MHzMSI();
 		ADC_shutdown();
 
 		RTC_read(&alarmTime);
-		RTC_nextModoloMinutes(&alarmTime, 4, 0);
+		RTC_nextModoloMinutes(&alarmTime, 2, 0);
 		RTC_scheduleAlarmA(&alarmTime);
 
 		/*

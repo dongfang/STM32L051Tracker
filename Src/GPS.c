@@ -14,40 +14,36 @@ DateTime_t GPSDateTime __attribute__((section (".noinit")));
 NMEA_CRS_SPD_Info_t GPSCourseSpeed __attribute__((section (".noinit")));
 Location_t GPSPosition __attribute__((section (".noinit")));
 NMEA_StatusInfo_t GPSStatus __attribute__((section (".noinit")));
-
 uint16_t lastGPSFixTime __attribute__((section (".noinit")));
 
 Location_t lastNonzeroPosition; // __attribute__((section (".noinit")));
 Location_t lastNonzero3DPosition; // __attribute__((section (".noinit")));
 
-float speed_kts;
-Time_t lastAltitudeTime;
-float lastAltitude;
-float climbRate;
+boolean latestAPRSRegions[12]; // 12 is sufficently large for the world map... and yes these ARE inited to zero.
+boolean latestAPRSCores[12]; // 12 is sufficently large for the world map... and yes these ARE inited to zero.
+
+float speed_kts __attribute__((section (".noinit")));
+float course __attribute__((section (".noinit")));
+//float climbRate __attribute__((section (".noinit")));
 
 // Do some data event processing when data has arrived.
-void onNewGPSData() {
+void onNewGPSPosition() {
 	if (GPSPosition.lat != 0 && GPSPosition.lon != 0) {
 		lastNonzeroPosition = GPSPosition;
 
 		if (GPSPosition.alt != 0) {
 			lastNonzero3DPosition = GPSPosition;
-
-			// calculate climb rate.
-			int timeSinceLastAltitude = timeAfter_seconds(&lastAltitudeTime,
-					&GPSDateTime.time);
-			if (timeSinceLastAltitude >= 300) {
-				lastAltitudeTime = GPSDateTime.time;
-				float dAltitude = GPSPosition.alt - lastAltitude;
-				lastAltitude = GPSPosition.alt;
-				climbRate = dAltitude * 60.0 / timeSinceLastAltitude;
-			}
 		}
 	}
 }
 
 void flashNumSatellites(uint8_t numSatellites) {
+	static uint32_t nextFlashTime;
 	static uint8_t cnt;
+
+	if (systime < nextFlashTime)
+		return;
+	nextFlashTime = systime + 250;
 
 	boolean odd = (cnt & 1) != 0;
 
@@ -105,16 +101,16 @@ uint8_t GPS_waitForTimelock(GPSStopFunctionInit_t* stopInit,
 	GPS_invalidateDateTime();
 
 	do {
-		GPS_getData();
+		GPS_driver();
 		// volatile uint32_t uart1ClockSource = RCC->CCIPR & RCC_CCIPR_USART1SEL;
 		flashNumSatellites(GPSStatus.numberOfSatellites);
 		// trace_printf("now %02d:%02d:%02d tvalid %d, dvalid %d\n", GPSTime.time.hours, GPSTime.time.minutes, GPSTime.time.seconds, GPSTime.time.valid, GPSTime.date.valid);
-		timer_sleep(250);
+		// timer_sleep(250);
 	} while ((!GPS_isDateTimeValid()
 			|| (GPSDateTime.time.hours == 0 && GPSDateTime.time.minutes == 0
 					&& GPSDateTime.time.seconds == 0)) && !stopFunction(limit));
 	LED_off();
-	GPS_getData();
+	GPS_driver();
 	if (GPS_isDateTimeValid()) {
 		//trace_printf("GPS time success: %02d:%02d:%02d\n", GPSDateTime.time.hours,
 		//		GPSDateTime.time.minutes, GPSDateTime.time.seconds);
@@ -132,7 +128,7 @@ boolean GPS_waitForPosition(GPSStopFunctionInit_t* stopInit,
 	do {
 		GPS_getData();
 		flashNumSatellites(GPSStatus.numberOfSatellites);
-		timer_sleep(250);
+		// timer_sleep(250);
 	} while (!GPS_isPositionValid() && !stopFunction(limit));
 	LED_off();
 	GPS_getData();
@@ -156,9 +152,9 @@ boolean GPS_waitForPrecisionPosition(GPSStopFunctionInit_t* stopInit,
 	GPS_invalidateNumSatellites();
 	boolean timedout;
 	do {
-		GPS_getData();
+		GPS_driver();
 		flashNumSatellites(GPSStatus.numberOfSatellites);
-		timer_sleep(250);
+		// timer_sleep(250);
 	} while ((GPSPosition.valid != 'A'
 			|| (GPS_numberOfSatellites() < REQUIRE_HIGH_PRECISION_NUM_SATS)
 			|| (REQUIRE_HIGH_PRECISION_ALTITUDE && GPSPosition.alt == 0)
@@ -167,11 +163,12 @@ boolean GPS_waitForPrecisionPosition(GPSStopFunctionInit_t* stopInit,
 
 	LED_off();
 
-	GPS_getData();
+	GPS_driver();
 
 	if (timedout) {
 //		trace_printf("GPS wait for precision pos: FAIL\n");
 	} else if (GPSPosition.lat != 0 || GPSPosition.lon != 0) {
+		// calculate climb rate.
 		Odometer_t tmpOdo;
 		uint32_t alreadyRunning = RCC->AHBENR & RCC_AHBENR_MIFEN;
 		RCC->AHBENR |= RCC_AHBENR_MIFEN;
@@ -179,32 +176,48 @@ boolean GPS_waitForPrecisionPosition(GPSStopFunctionInit_t* stopInit,
 		RCC->AHBENR = (RCC_AHBENR_MIFEN & ~RCC_AHBENR_MIFEN) | alreadyRunning;
 
 		if (odometer_checksum(&tmpOdo) == tmpOdo.checksum) {
+			int timeSinceLastOdo =
+					timeAfter_seconds(&tmpOdo.lastOdometerTime,
+					&GPSDateTime.time);
+
+			/*
+			float dAltitude = GPSPosition.alt - tmpOdo.altitude;
+			tmpOdo.altitude = GPSPosition.alt;
+			climbRate = dAltitude * 60.0 / timeSinceLastOdo;
+			*/
+
 			// valid
 			double latFactor = cos(GPSPosition.lat * 0.01745329251994); // convert to radians
-			double dist = (GPSPosition.lat - tmpOdo.lastOdometeredPosition.lat)
-					* (GPSPosition.lat - tmpOdo.lastOdometeredPosition.lat);
-			dist += (GPSPosition.lon - tmpOdo.lastOdometeredPosition.lon)
-					* (GPSPosition.lon - tmpOdo.lastOdometeredPosition.lon)
-					* latFactor;
-			dist = sqrt(dist);
+			double lateralDist = GPSPosition.lat - tmpOdo.lastOdometeredPosition.lat;
+			double longitudinalDist = (GPSPosition.lon - tmpOdo.lastOdometeredPosition.lon) * latFactor;
+
+			double distsq = lateralDist*lateralDist + longitudinalDist*longitudinalDist;
+			double dist = sqrt(distsq);
 			// now it is in degrees latitude, each of which is 60nm, or 1852 * 60m
 
 			dist = dist * 60.0; // now it's in nautical miles
 			tmpOdo.odometer_nm += dist;
 
-			Time_t now;
-			RTC_read(&now);
-
 			// time in hours
-			float time_h = timeAfter_seconds(&tmpOdo.lastOdometerTime, &now)
-					/ 3600.0;
+			float time_h = timeSinceLastOdo / 3600.0;
 
 			// nm / hours === knots
 			speed_kts = dist / time_h;
-			tmpOdo.lastOdometerTime = now;
+			// dLat=1, dLon=0 should yield 0. atan2(-1,0) = pi = 180d want 0 180-180 = 0
+			// dLat=1, dLon=1 should yield 45. atan2(-1,1) = 3pi/4 = 135d want 45 180-135 = 45
+			// dLat=0, dLon=1 should yield 90. atan2(0,1) = pi/2 = 90 want 90 180-90 = 90
+			// dLat=-1, dLon=1 should yield 135. atan2(1,1) = pi/4 = 45
+			// dLat=-1, dLon=0 should yield 180. atan2(1,0) = 0 = 0
+			// dLat=-1, dLon=-1 should yield 225. atand(1,-1) = -pi/4 = -45  180 --45 = 225
+			// dLat=1, dLon=-0.000001 should yield 359.99... atan2(-1,-0.0001) = -pi+a little = -179.999
+
+			course = 180 - atan2(-lateralDist, longitudinalDist) * 57.2957795130;
+
+			tmpOdo.lastOdometerTime = GPSDateTime.time;
 		} else {
 			tmpOdo.odometer_nm = 0;
 			speed_kts = 0;
+			course = 0;
 		}
 
 		tmpOdo.lastOdometeredPosition.lat = GPSPosition.lat;
@@ -273,6 +286,8 @@ uint8_t GPSCycle_voltageLimited() {
 		lastGPSFixTime = (systime - gpsstart) / 1000;
 		result = 2;
 	}
+
+	GPS_stopListening();
 
 	if (result == 2) {
 		switchTo8MHzHSI();

@@ -57,7 +57,7 @@ void LED_faultCode(char c) {
 
 	uint8_t idx;
 	int i = 0;
-	int realNumReps = (sysState == FLIGHT ? 3 : 100);
+	int realNumReps = (sysState == FLIGHT ? 1 : 5);
 	charloop: while (i < realNumReps) {
 		i++;
 		idx = offset;

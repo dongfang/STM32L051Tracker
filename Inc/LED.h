@@ -21,6 +21,7 @@
 #define LED_FAULT_LSE_DEAD 'L'
 #define LED_FAULT_OVERCAPTURE 'O'
 #define LED_FAULT_NO_PLL_SETTING 'P'
+#define LED_FAULT_GPS_INBUF_OVERRUN 'U'
 
 uint8_t LED_init(uint8_t dim);
 void LED_on();

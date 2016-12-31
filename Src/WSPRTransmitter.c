@@ -59,6 +59,7 @@ void WSPRModulationLoop() {
 	// we need 22369.62133410543483 divider ~ 22370 = 10*2370
 	TIM22->PSC = 10 - 1;
 	TIM22->ARR = 2237 - 1;
+	TIM22->CNT = 2237/3; // Set the counter part way through; the first bit is send 1.666 times.
 
 	// Supposed to route LSE to ETR
 	TIM22->OR |= TIM22_OR_ETR_RMP_0 | TIM22_OR_ETR_RMP_1;
@@ -119,7 +120,7 @@ void WSPR_Transmit(WSPRBand_t band) {
 	}
 
 	// One COULD reduce the clock speed before WSPR, as there are no requirements.
-	// sleepSpeedConfig();
+	switchTo1MHzMSI();
 
 	// trace_printf("Waiting for WSPR window\n");
 	// RTC_waitTillModuloMinutes(2, 0);

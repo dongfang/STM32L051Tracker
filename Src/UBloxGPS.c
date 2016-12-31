@@ -6,6 +6,7 @@
 #include <string.h>
 #include "Systime.h"
 #include "GPS.h"
+#include "LED.h"
 #include "Globals.h"
 #include "stm32l0xx.h"
 
@@ -39,7 +40,10 @@ enum {
 static uint8_t state; // this should be inited.
 static __attribute__((section (".noinit"))) uint8_t dataindex;
 static __attribute__((section (".noinit"))) uint8_t commaindex;
-static __attribute__((section (".noinit"))) uint8_t commitCheck;
+#define GPS_INBUF_SIZE 256
+static __attribute__((section (".noinit"))) volatile uint8_t inbuf[GPS_INBUF_SIZE];
+static volatile uint16_t inbuf_in;
+static volatile uint16_t inbuf_out;
 
 // static uint8_t _UBX_POLL_NAV5_MESSAGE[] = UBX_POLL_NAV5_MESSAGE;
 static uint8_t _UBX_INIT_NAV5_MESSAGE[] = UBX_INIT_NAV5_MESSAGE;
@@ -54,17 +58,9 @@ static UBX_MESSAGE INIT_NAV_MESSAGE = { sizeof(_UBX_INIT_NAV5_MESSAGE),
 // interrupt handler.
 // Interested consumers should disable interrupts, copy the unsafes into a their locally
 // managed safe copies and re-enable interrupts.
-volatile __attribute__((section (".noinit"))) DateTime_t nmeaTimeInfo_unsafe;
-volatile __attribute__((section (".noinit"))) NMEA_CRS_SPD_Info_t nmeaCRSSPDInfo_unsafe;
-volatile __attribute__((section (".noinit"))) Location_t nmeaPositionInfo_unsafe;
-volatile __attribute__((section (".noinit"))) NMEA_StatusInfo_t nmeaStatusInfo_unsafe;
-
-uint8_t nmea_parse(char c);
 
 static volatile UBX_MESSAGE* currentSendingMessage;
 static __attribute__((section (".noinit"))) int8_t currentSendingIndex;
-static __attribute__((section (".noinit"))) uint8_t currentChecksumA;
-static __attribute__((section (".noinit"))) uint8_t currentChecksumB;
 
 static __attribute__((section (".noinit"))) uint8_t readClassId;
 static __attribute__((section (".noinit"))) uint8_t readMessageId;
@@ -73,16 +69,17 @@ static __attribute__((section (".noinit"))) uint16_t readBodyCnt;
 
 static __attribute__((section (".noinit"))) uint8_t ackedClassId;
 static __attribute__((section (".noinit"))) uint8_t ackedMessageId;
-static uint32_t lastSendConfigurationTime;
+static __attribute__((section (".noinit"))) char id[5];
+
+static uint32_t nextSendConfigurationTime;
+
+extern void onNewGPSPosition();
 
 boolean navSettingsConfirmed;
 
 static void sendToGPS(uint8_t data) {
 	USART2->TDR = data;
 }
-
-volatile uint8_t ca;
-volatile uint8_t cb;
 
 void GPS_transmit() {
 	if (currentSendingIndex == -2) {
@@ -109,62 +106,35 @@ void GPS_transmit() {
 static void beginSendUBXMessage(UBX_MESSAGE* message) {
 	currentSendingMessage = message;
 	currentSendingIndex = -2;
-	currentChecksumA = 0;
-	currentChecksumB = 0;
 
 	// This should cause an immediate interrupt...
 	USART2->CR1 |= USART_CR1_TXEIE;
 }
 
+volatile int16_t maxBufferLoad;
+
 void USART2_IRQHandler() {
 	uint32_t stat = USART2->ISR;
 	if (stat & USART_ISR_RXNE) {
-		uint16_t rxd = USART2->RDR;
-		nmea_parse(rxd);
+		volatile uint16_t rxd = USART2->RDR; // make sure to read it even if never used.
+		int16_t bufferLoad = inbuf_in - inbuf_out;
+		if (bufferLoad < 0) bufferLoad += GPS_INBUF_SIZE;
+		if (bufferLoad > maxBufferLoad)
+			maxBufferLoad = bufferLoad;
+
+		uint16_t next = (inbuf_in+1) & (GPS_INBUF_SIZE-1);
+		if (next == inbuf_out) {
+			// shit, buffer is full.
+			// LED_faultCode(LED_FAULT_GPS_INBUF_OVERRUN);
+		} else {
+			inbuf[inbuf_in] = rxd;
+			inbuf_in = next;
+		}
 	} if ((stat & USART_ISR_TXE) && (currentSendingMessage != NULL)) {
 		GPS_transmit();
 	}
 }
 
-/*
- void printNMEA_TimeInfo() {
- uint32_t itod = nmeaTimeInfo_unsafe.itod;
- int millis = itod % 1000;
- itod = itod / 1000;
- int seconds = itod % 60;
- itod = itod / 60;
- int minutes = itod % 60;
- itod = itod / 60;
- int hours = itod % 60;
-
- trace_printf("NMEA_TimeInfo_t\r\n");
- trace_printf("itod: %u (%0d:%0d:%0d.%000d)\r\n", nmeaTimeInfo_unsafe.itod,
- hours, minutes, seconds, millis);
- }
-
- void printNMEA_CRS_SPD_Info() {
- printf("NMEA_CRS_SPD_Info\r\n");
- printf("crs: %f spd %f\r\n", nmeaCRSSPDInfo_unsafe.course, nmeaCRSSPDInfo_unsafe.groundSpeed);
- }
-
- void printNMEA_PositionInfo() {
- uint32_t itod = nmeaPositionInfo_unsafe.fixTimeUTC;
- int millis = itod % 1000;
- itod = itod / 1000;
- int seconds = itod % 60;
- itod = itod / 60;
- int minutes = itod % 60;
- itod = itod / 60;
- int hours = itod % 60;
- printf("FixTime: %u (%0d:%0d:%0d.%000d) ", nmeaPositionInfo_unsafe.fixTimeUTC, hours, minutes, seconds, millis);
- printf("lat %f, lon %f, alt %f, valid %c\r\n", nmeaPositionInfo_unsafe.lat,nmeaPositionInfo_unsafe.lon,nmeaPositionInfo_unsafe.alt, nmeaPositionInfo_unsafe.validity);
- }
-
- void printNMEA_StatusInfo() {
- printf("NMEA_StatusInfo\r\n");
- printf("FixMode %d, NumSat %d, horizAcc %f\r\n", nmeaStatusInfo_unsafe.fixMode, nmeaStatusInfo_unsafe.numberOfSatellites, nmeaStatusInfo_unsafe.horizontalAccuracy);
- }
- */
 MessageState latestGPSState = CONSUMED;
 
 // Parse one character of a NMEA time.
@@ -308,9 +278,8 @@ static void parseGPVTG(char c) {
 			tempFloat = 0;
 			tempFloat2 = 0;
 		} else if (commaindex == 5) {
-			nmeaCRSSPDInfo_unsafe.course = tempFloat;
-			nmeaCRSSPDInfo_unsafe.groundSpeed = tempFloat2 * 0.514444; // knots to m/s
-			commitCheck |= 1;
+			GPSCourseSpeed.course = tempFloat;
+			GPSCourseSpeed.groundSpeed = tempFloat2 * 0.514444; // knots to m/s
 		}
 		commaindex++;
 	} else {
@@ -342,15 +311,15 @@ void parseGPGGA(char c) {
 			tempTime.valid = false;
 		} else if (commaindex == 9) {
 			// debugTime("GGA", &tempTime);
-			nmeaTimeInfo_unsafe.time = tempTime;
-			nmeaTimeInfo_unsafe.time.valid = tempTime.valid;
-			nmeaPositionInfo_unsafe.lat = tempLat;
-			nmeaPositionInfo_unsafe.lon = tempLon;
-			nmeaStatusInfo_unsafe.fixMode = tempU8;
-			nmeaStatusInfo_unsafe.numberOfSatellites = tempU82;
-			nmeaStatusInfo_unsafe.horizontalAccuracy = tempFloat;
-			nmeaPositionInfo_unsafe.alt = tempFloat2;
-			commitCheck |= 2;
+			GPSDateTime.time = tempTime;
+			GPSDateTime.time.valid = tempTime.valid;
+			GPSPosition.lat = tempLat;
+			GPSPosition.lon = tempLon;
+			GPSStatus.fixMode = tempU8;
+			GPSStatus.numberOfSatellites = tempU82;
+			GPSStatus.horizontalAccuracy = tempFloat;
+			GPSPosition.alt = tempFloat2;
+			onNewGPSPosition();
 		}
 		commaindex++;
 	} else {
@@ -403,16 +372,16 @@ void parseGPRMC(char c) {
 			tempTime.valid = false;
 		} else if (commaindex == 9) {
 			// debugTime("RMC", &tempTime);
-			nmeaPositionInfo_unsafe.fixTime = tempTime;
-			nmeaPositionInfo_unsafe.fixTime.valid = tempTime.valid;
-			nmeaPositionInfo_unsafe.valid = tempChar;
-			nmeaPositionInfo_unsafe.lat = tempLat;
-			nmeaPositionInfo_unsafe.lon = tempLon;
-			nmeaCRSSPDInfo_unsafe.groundSpeed = tempFloat * 0.514444; // knots to m/s
-			nmeaCRSSPDInfo_unsafe.course = tempFloat2;
-			nmeaTimeInfo_unsafe.date = tempDate;
-			nmeaTimeInfo_unsafe.date.valid = tempDate.valid;
-			commitCheck |= 4;
+			GPSPosition.fixTime = tempTime;
+			GPSPosition.fixTime.valid = tempTime.valid;
+			GPSPosition.valid = tempChar;
+			GPSPosition.lat = tempLat;
+			GPSPosition.lon = tempLon;
+			GPSCourseSpeed.groundSpeed = tempFloat * 0.514444; // knots to m/s
+			GPSCourseSpeed.course = tempFloat2;
+			GPSDateTime.date = tempDate;
+			GPSDateTime.date.valid = tempDate.valid;
+			onNewGPSPosition();
 		}
 		commaindex++;
 	} else {
@@ -454,7 +423,6 @@ void parseGPRMC(char c) {
 
 void parseGPGSA(char c) {
 // Ignore. Not important.
-	commitCheck |= 16;
 }
 
 void parseGPGSV(char c) {
@@ -511,7 +479,6 @@ void parseGPGSV(char c) {
 			break;
 		}
 	}
-	commitCheck |= 32;
 }
 
 void parseGPGLL(char c) {
@@ -547,13 +514,13 @@ void parseGPGLL(char c) {
 			break;
 		case 7:
 			//debugTime("GLL", &tempTime);
-			nmeaPositionInfo_unsafe.lat = tempLat;
-			nmeaPositionInfo_unsafe.lon = tempLon;
-			nmeaPositionInfo_unsafe.fixTime = tempTime;
-			nmeaPositionInfo_unsafe.valid = tempChar;
-			nmeaTimeInfo_unsafe.time = tempTime;
-			nmeaTimeInfo_unsafe.time.valid = tempTime.valid;
-			commitCheck |= 8;
+			GPSPosition.lat = tempLat;
+			GPSPosition.lon = tempLon;
+			GPSPosition.fixTime = tempTime;
+			GPSPosition.valid = tempChar;
+			GPSDateTime.time = tempTime;
+			GPSDateTime.time.valid = tempTime.valid;
+			onNewGPSPosition();
 			break;
 		default:
 			break;
@@ -569,12 +536,10 @@ uint8_t char2hexdigit(uint8_t c) {
 	return c - '0';
 }
 
-static char id[5];
 uint8_t nmea_parse(char c) {
 	static char sentence;
 	static uint8_t checksum;
 
-	// trace_printf("GPS state %d, in %d\n", state, c);
 	switch (state) {
 	case STATE_IDLE:
 		if (c == '$') {
@@ -590,11 +555,12 @@ uint8_t nmea_parse(char c) {
 
 		// trigger sending a message, until confirmed.
 		if (!navSettingsConfirmed && currentSendingMessage == NULL
-				&& systime >= lastSendConfigurationTime + GPS_CONF_RESEND_INTERVAL) {
+				&& systime >= nextSendConfigurationTime
+				) {
 			ackedClassId = 0;
 			ackedMessageId = 0; // clear any prior acknowledge.
 			beginSendUBXMessage(&INIT_NAV_MESSAGE);
-			lastSendConfigurationTime = systime;
+			nextSendConfigurationTime = systime + GPS_CONF_RESEND_INTERVAL;
 #ifdef TRACE_GPS
 			trace_printf("Sending GPS conf. message\n");
 #endif
@@ -736,29 +702,22 @@ uint8_t nmea_parse(char c) {
 	return 0;
 }
 
-extern void onNewGPSData();
-
-void GPS_getData() {
-	NVIC_DisableIRQ(USART2_IRQn);
-	__DSB();
-	__ISB();
-
-	// These are committed by the IRQ handler once messages are complete.
-	GPSDateTime = nmeaTimeInfo_unsafe;
-	GPSCourseSpeed = nmeaCRSSPDInfo_unsafe;
-	GPSPosition = nmeaPositionInfo_unsafe;
-	GPSStatus = nmeaStatusInfo_unsafe;
-
-	onNewGPSData();
-	NVIC_EnableIRQ(USART2_IRQn);
+void GPS_driver() {
+	while(inbuf_out != inbuf_in) {
+		uint8_t data = inbuf[inbuf_out];
+		inbuf_out = (inbuf_out+1) & (GPS_INBUF_SIZE-1);
+		nmea_parse(data);
+	}
+	__WFI(); // wait for more data to arrive.
 }
 
 void GPS_start() {
 	// Reset the message sending
-	lastSendConfigurationTime = systime - GPS_CONF_RESEND_INTERVAL;
+	nextSendConfigurationTime = systime;
 	currentSendingIndex = 0;
 	currentSendingMessage = NULL;
 	navSettingsConfirmed = false;
+	inbuf_in = 0; inbuf_out = 0;
 
 	GPIOA->BRR = 1<<7; // PA7 low
 
@@ -810,34 +769,34 @@ boolean GPS_isGPSRunning() {
 }
 
 void GPS_invalidateDateTime() {
-	nmeaTimeInfo_unsafe.time.valid = false;
-	nmeaTimeInfo_unsafe.date.valid = false;
-	nmeaTimeInfo_unsafe.time.hours = 0;
-	nmeaTimeInfo_unsafe.time.minutes = 0;
-	nmeaTimeInfo_unsafe.time.seconds = 0;
+	GPSDateTime.time.valid = false;
+	GPSDateTime.date.valid = false;
+	GPSDateTime.time.hours = 0;
+	GPSDateTime.time.minutes = 0;
+	GPSDateTime.time.seconds = 0;
 }
 
 boolean GPS_isDateTimeValid() {
-	boolean result = nmeaTimeInfo_unsafe.time.valid
-			&& nmeaTimeInfo_unsafe.date.valid;
+	boolean result = GPSDateTime.time.valid
+			&& GPSDateTime.date.valid;
 	// trace_printf("GPS date time valid: %d\n", result);
 	return result;
 }
 
 void GPS_invalidatePosition() {
-	nmeaPositionInfo_unsafe.valid = 'V';
+	GPSPosition.valid = 'V';
 }
 
 boolean GPS_isPositionValid() {
-	return nmeaPositionInfo_unsafe.valid == 'A';
+	return GPSPosition.valid == 'A';
 }
 
 void GPS_invalidateNumSatellites() {
-	nmeaStatusInfo_unsafe.numberOfSatellites = 0;
+	GPSStatus.numberOfSatellites = 0;
 }
 
 uint8_t GPS_numberOfSatellites() {
-	return nmeaStatusInfo_unsafe.numberOfSatellites;
+	return GPSStatus.numberOfSatellites;
 }
 
 //#endif

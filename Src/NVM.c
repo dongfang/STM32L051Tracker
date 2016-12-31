@@ -129,8 +129,8 @@ void recordFlightLog() {
 		record.alt = lastNonzeroPosition.alt;
 		DateTime_t datetime;
 		record.compactedDateTime = compactDateTime(&GPSDateTime);
-		// record.numHF = 123;
 		record.speed_kts = speed_kts;
+		record.course = course * (256/360.0f);
 		record.temperature = temperature;
 		record.checksum =
 				record.lat + record.lon + record.alt + record.compactedDateTime + record.speed_kts + record.temperature + 123;
@@ -180,7 +180,7 @@ uint16_t playbackFlightLog(APRS_Band_t band, uint32_t frequency) {
 				circularIdx -= NUM_LOG_RECORDS;
 			buf = APRS_marshallFlightLogMessage(flashdata + circularIdx, buf);
 		}
-		timer_sleep(500);
+		// timer_sleep(500);
 		APRS_transmitMessage(band, TEXT_MESSAGE, frequency);
 	}
 	RCC->AHBENR = (RCC_AHBENR_MIFEN & ~RCC_AHBENR_MIFEN) | alreadyRunning;

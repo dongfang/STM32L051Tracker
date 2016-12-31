@@ -249,10 +249,6 @@ void APRS_marshallTelemetryMessage(uint16_t txDelay) {
 	buf = print2DigitFloat(buf, odometer.odometer_nm);
 
 	*buf++ = ',';
-	*buf++ = 'v';
-	buf = print2DigitFloat(buf, climbRate);
-
-	*buf++ = ',';
 	*buf++ = 't';
 	buf = printInteger(buf, temperature);
 
@@ -265,6 +261,15 @@ void APRS_marshallTelemetryMessage(uint16_t txDelay) {
 	*buf++ = ',';
 	*buf++ = 'm';
 	buf = printInteger(buf, MSITrim);
+/*
+	*buf++ = ',';
+	*buf++ = 'c';
+	buf = printInteger(buf, course);
+
+	*buf++ = ',';
+	*buf++ = 's';
+	buf = printInteger(buf, speed_kts);
+*/
 	/*
 	 sprintf(temp, ",f%lu", txFrequency / 1000);
 	 ax25_send_string(temp);
@@ -302,8 +307,12 @@ void APRS_marshallPositionMessage(uint16_t txDelay) {
 	if (_temperature < 0)
 		_temperature = 0;
 
-	uint16_t telemetryValues[] = { (uint16_t) (vBattery * 1000.0f),
-			(uint16_t) (vSolar * 1000.0f), _temperature, lastGPSFixTime,
+	uint16_t telemetryValues[] = {
+			//(uint16_t) (vBattery * 1000.0f),
+			(uint16_t) (vSolar * 1000.0f),
+			_temperature,
+			lastGPSFixTime,
+			(int16_t) course,
 			(int16_t) (speed_kts * 10) // conversion to 1/10 kts
 			};
 
@@ -375,7 +384,8 @@ static char* binaryMarshallWordByBase91(char* buf, uint32_t word) {
 	return buf + 5;
 }
 
-char* APRS_marshallFlightLogMessage(const volatile LogRecord_t* message, char* buf) {
+char* APRS_marshallFlightLogMessage(const volatile LogRecord_t* message,
+		char* buf) {
 	// Status message
 	//The status text occupies the rest of the Information field, and may be up to 62 characters long
 	// (if there is no timestamp in the report) or 55 characters (if there is a timestamp).
@@ -424,7 +434,7 @@ static void APRS_initDirectHFTransmission(uint32_t frequency,
 static void APRS_initDirectVHFTransmission(uint32_t frequency,
 		uint32_t referenceFrequency) {
 	APRS_makeDirectTransmissionFrequency(frequency, referenceFrequency,
-			DIRECT_2m_HARDWARE_OUTPUT);
+	DIRECT_2m_HARDWARE_OUTPUT);
 	AFSK_init();
 }
 

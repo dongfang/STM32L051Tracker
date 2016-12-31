@@ -62,6 +62,7 @@ uint8_t GPSCycle_voltageLimited();
 uint8_t GPS_waitForTimelock(GPSStopFunctionInit_t* stopInit, GPSStopFunction_t* stopFunction, void* limit);
 uint8_t GPS_waitForPosition(GPSStopFunctionInit_t* stopInit, GPSStopFunction_t* stopFunction, void* limit);
 uint8_t GPS_waitForPrecisionPosition(GPSStopFunctionInit_t* stopInit, GPSStopFunction_t* stopFunction, void* limit);
+void GPS_driver();
 
 // Fake location to be remote from certain stuff
 void excludeZones(Location_t* location);

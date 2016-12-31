@@ -5,9 +5,11 @@
  *      Author: dongfang
  */
 
-#include "Power.h"
 #include "Globals.h"
-#include <stm32l0xx.h>
+#include <stdint.h>
+#include <stm32l051xx.h>
+#include <core_cm0plus.h>
+#include "Power.h"
 
 uint8_t MSITrim;
 
@@ -61,7 +63,6 @@ void switchTo8MHzHSI() {
 }
 
 void switchTo1MHzMSI() {
-
 	//if (isRunningMSI())
 	//	return;
 	RCC->CR |= RCC_CR_MSION;

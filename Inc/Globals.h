@@ -26,11 +26,13 @@ extern boolean latestAPRSCores[12];	 // 12 is sufficently large for the world ma
 extern int8_t temperature;
 extern uint8_t MSITrim;
 extern uint8_t isADCUsingHSI;
+extern volatile int16_t maxBufferLoad;
 
 extern float VDDa;
 extern float vBattery;
 extern float vSolar;
 extern float speed_kts;
+extern float course;
 
 extern SysState_t sysState;
 extern char currentTextMessage[64];
