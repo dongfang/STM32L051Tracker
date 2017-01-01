@@ -84,11 +84,12 @@ void RTCWakeupExperiment() {
 //extern volatile uint8_t RTCHandlerFlag;
 
 void selfCalibrate() {
+	switchTo8MHzHSI();
 	GPS_start();
 	LED_on();
 	timer_sleep(500);
 	LED_off();
-	selfCalibratePLLTrim();
+//	selfCalibratePLLTrim();
 	verifyRTCCalibration();
 	verifyWSPRModulation(12);
 }
@@ -110,7 +111,8 @@ int main(void) {
 
 	// }
 	// if (isCalibrateOption()) {
-	//	selfCalibrate();
+	//while(1)
+	//selfCalibrate();
 	// }
 
 	Time_t alarmTime = { .hours = 12, .minutes = 0, .seconds = 0 };
@@ -128,7 +130,7 @@ int main(void) {
 
 	    float energy = vBattery + vSolar/2;
 
-		if (energy >= 2.75) {
+		if (energy >= 2.8) {
 			if (gpsOrWSPR) {
 				// Do WSPR. First, do some APRS blah blah to kill time. Seriously, that's why.
 				switchTo8MHzHSI();
@@ -196,6 +198,7 @@ int main(void) {
 		}
 
 		switchTo1MHzMSI();
+
 		ADC_shutdown();
 
 		RTC_read(&alarmTime);

@@ -133,7 +133,7 @@ void recordFlightLog() {
 		record.course = course * (256/360.0f);
 		record.temperature = temperature;
 		record.checksum =
-				record.lat + record.lon + record.alt + record.compactedDateTime + record.speed_kts + record.temperature + 123;
+				record.lat + record.lon + record.alt + record.compactedDateTime + record.speed_kts + record.course + record.temperature + 123;
 
 		NVM_storeLogRecord(tmpIndex.headIdx, &record);
 

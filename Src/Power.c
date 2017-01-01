@@ -178,6 +178,7 @@ void calibrateMSI(uint32_t fDesired) {
 		error = error2;
 		//save
 		bestTrim = trim;
+		if (trim==0 || trim >= 32) break;
 		// try a new setting.
 		if (fMeasured > fDesired)
 			trim--;
