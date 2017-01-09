@@ -71,7 +71,7 @@ void switchTo1MHzMSI() {
 	}
 
 	RCC->CFGR = 0 << 11 | // APB2 is divide by 1
-			0 << 8 |  // APB1 is divide by 1
+			4 << 8      |  // APB1 is divide by 2
 			0b1000 << 4 |  // SYSCLK is divide by 2
 			RCC_CFGR_SW_MSI; /*| 7U << 24 |*/ // Use MSI
 
@@ -86,7 +86,6 @@ void switchTo1MHzMSI() {
 }
 
 void switchTo2MHzMSI() {
-
 	//if (isRunningMSI())
 	//	return;
 	RCC->CR |= RCC_CR_MSION;
@@ -95,7 +94,7 @@ void switchTo2MHzMSI() {
 	}
 
 	RCC->CFGR = 0 << 11 | // APB2 is divide by 1
-			0 << 8 |  // APB1 is divide by 1
+			4 << 8 |  // APB1 is divide by 2
 			0b0000 << 4 |  // SYSCLK is divide by 1
 			RCC_CFGR_SW_MSI; /*| 7U << 24 |*/ // Use MSI
 
@@ -107,6 +106,10 @@ void switchTo2MHzMSI() {
 	}
 
 	SysTick_Config(2000);
+}
+
+void switchMSIClock() {
+	switchTo2MHzMSI();
 }
 
 void setMediumPerformanceCoreVoltage() {

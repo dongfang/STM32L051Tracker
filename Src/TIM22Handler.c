@@ -7,6 +7,7 @@
 
 #include "stm32l0xx.h"
 #include "LED.h"
+#include "Watchdog.h"
 
 /*
  * Shared handler for both AFSK and PrecisionTimer.
@@ -31,6 +32,8 @@ extern volatile uint8_t TIM22Updated;
 void TIM22_IRQHandler(void) {
 	static int subcount;
 	if (TIM22->SR & TIM_SR_CC1IF) { // Capture/Compare 1
+		WWDG_pat();
+
 		// We can pretty much assume the only other possibility was PrecisionTimer.
 		uint32_t captureValue;
 
@@ -63,6 +66,10 @@ void TIM22_IRQHandler(void) {
 	if (TIM22->SR & TIM_SR_UIF) {
 		// Clear the interrupt flag.
 		TIM22->SR &= ~TIM_SR_UIF;
+
+		// This might not be the ideal place to do this...
+		WWDG_pat();
+
 		if (AFSKTransmitting) {
 			if (packet_cnt < packet_size) {
 				// NRZI impl.

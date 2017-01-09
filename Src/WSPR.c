@@ -398,8 +398,7 @@ uint8_t WSPR_getSymbol(uint8_t i) {
   return sym;
 }
 
-static const uint8_t powerLevels[] =
-{0, 3, 7, 10, 13, 17, 20, 23, 27, 30, 33, 37};
+static const uint8_t powerLevels[] = {0, 3, 7, 10, 13, 17, 20, 23, 27, 30, 33, 37};
 
 static uint8_t fake_dBm_batteryVoltage() {
 	// All others cause failure to report position or something, in WSPR program.
@@ -421,7 +420,7 @@ static uint8_t fake_dBm_speed() {
 	// 17 (0.05W)= 40 ..  60
 	// 20 (0.1W) = 60 ..  80
 	// 23 (0.2W) = 80 ..
-	int8_t index = speed_kts/20;
+	int8_t index = speed_kts / 20;
 	if (index < 0) return 0;
 	if (index >= sizeof(powerLevels)) return 37;
 	return powerLevels[index];

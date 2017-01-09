@@ -9,6 +9,7 @@
 #include "LED.h"
 #include "PLL.h"
 #include "Calibration.h"
+#include "Watchdog.h"
 
 // flag set by interrupt handler after each WSPR bit time elapsed.
 volatile uint8_t TIM22Updated;
@@ -73,10 +74,6 @@ void WSPRModulationLoop() {
 	NVIC_SetPriority(TIM22_IRQn, 0);
 	NVIC_EnableIRQ(TIM22_IRQn);
 
-	// Prepare WFI
-	PWR->CR = (PWR->CR & ~3); // no LPRUN and no deepsleep.
-	SCB->SCR &= ~4; // Don't STOP.
-
 	TIM22Updated = 0;
 
 	// Enable Timer22
@@ -92,7 +89,6 @@ void WSPRModulationLoop() {
 		__WFI();
 		if (TIM22Updated) {
 			WSPR_modulate(WSPR_getSymbol(numBitsSent++));
-			// trace_printf("%d\n", numBitsSent);
 			TIM22Updated = 0;
 			LED_toggle();
 		}
@@ -120,7 +116,7 @@ void WSPR_Transmit(WSPRBand_t band) {
 	}
 
 	// One COULD reduce the clock speed before WSPR, as there are no requirements.
-	switchTo1MHzMSI();
+	switchMSIClock();
 
 	// trace_printf("Waiting for WSPR window\n");
 	// RTC_waitTillModuloMinutes(2, 0);

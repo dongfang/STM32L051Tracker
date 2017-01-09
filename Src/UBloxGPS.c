@@ -9,6 +9,7 @@
 #include "LED.h"
 #include "Globals.h"
 #include "stm32l0xx.h"
+#include "Watchdog.h"
 
 enum {
 	STATE_IDLE,
@@ -38,12 +39,15 @@ enum {
 #define GPS_CONF_RESEND_INTERVAL 5000
 
 static uint8_t state; // this should be inited.
+uint16_t numGPSChecksumErrors;
 static __attribute__((section (".noinit"))) uint8_t dataindex;
 static __attribute__((section (".noinit"))) uint8_t commaindex;
-#define GPS_INBUF_SIZE 256
+#define GPS_INBUF_SIZE 64
 static __attribute__((section (".noinit"))) volatile uint8_t inbuf[GPS_INBUF_SIZE];
-static volatile uint16_t inbuf_in;
-static volatile uint16_t inbuf_out;
+volatile int16_t maxBufferLoad;
+
+static volatile __attribute__((section (".noinit"))) uint16_t inbuf_in;
+static volatile __attribute__((section (".noinit"))) uint16_t inbuf_out;
 
 // static uint8_t _UBX_POLL_NAV5_MESSAGE[] = UBX_POLL_NAV5_MESSAGE;
 static uint8_t _UBX_INIT_NAV5_MESSAGE[] = UBX_INIT_NAV5_MESSAGE;
@@ -111,8 +115,6 @@ static void beginSendUBXMessage(UBX_MESSAGE* message) {
 	USART2->CR1 |= USART_CR1_TXEIE;
 }
 
-volatile int16_t maxBufferLoad;
-
 void USART2_IRQHandler() {
 	uint32_t stat = USART2->ISR;
 	if (stat & USART_ISR_RXNE) {
@@ -134,8 +136,6 @@ void USART2_IRQHandler() {
 		GPS_transmit();
 	}
 }
-
-MessageState latestGPSState = CONSUMED;
 
 // Parse one character of a NMEA time.
 // apparently writes into a millis value at end.
@@ -320,6 +320,8 @@ void parseGPGGA(char c) {
 			GPSStatus.horizontalAccuracy = tempFloat;
 			GPSPosition.alt = tempFloat2;
 			onNewGPSPosition();
+			// getting a GPS position, whether valid or not, should satisfy the watchdog.
+			// WWDG_pat();
 		}
 		commaindex++;
 	} else {
@@ -536,7 +538,7 @@ uint8_t char2hexdigit(uint8_t c) {
 	return c - '0';
 }
 
-uint8_t nmea_parse(char c) {
+uint8_t nmea_parse(volatile char c) {
 	static char sentence;
 	static uint8_t checksum;
 
@@ -573,6 +575,7 @@ uint8_t nmea_parse(char c) {
 			dataindex = 0;
 			commaindex = 0;
 			state = STATE_DATA;
+
 			if (strncmp("GPVTG", id, 5) == 0) {
 				sentence = GPVTG;
 				//trace_printf("GPVTG\n");
@@ -633,11 +636,9 @@ uint8_t nmea_parse(char c) {
 		checksum -= char2hexdigit(c);
 		state = STATE_IDLE;
 		if (checksum) {
-			latestGPSState = INVALID;
-			// trace_printf("*** Bad GPS checksum!\n");
+			numGPSChecksumErrors++;
 		} else {
-			latestGPSState = NEWDATA;
-			// trace_printf("parse check %d\n", commitCheck);
+			WWDG_pat();
 			return 1;
 		}
 		break;
@@ -712,7 +713,7 @@ void GPS_driver() {
 }
 
 void GPS_start() {
-	// Reset the message sending
+		// Reset the message sending
 	nextSendConfigurationTime = systime;
 	currentSendingIndex = 0;
 	currentSendingMessage = NULL;
@@ -737,7 +738,7 @@ void GPS_start() {
 
 #ifdef USE_MSI_WHILE_GPS
 	calibrateMSI(MSI_WHILE_GPS_SPEED);
-	uint32_t brr = MSI_WHILE_GPS_SPEED / 9600;
+	uint32_t brr = MSI_WHILE_GPS_SPEED / (9600 * 2);
 #else
 	uint32_t brr = 16E6 / 9600;
 #endif
@@ -756,7 +757,6 @@ void GPS_start() {
 
 void GPS_stopListening() {
 	USART2->CR1 &= USART_CR1_UE;
-	latestGPSState = CONSUMED;
 }
 
 void GPS_powerOff() {

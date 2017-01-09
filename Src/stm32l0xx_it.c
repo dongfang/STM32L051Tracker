@@ -38,6 +38,7 @@
  */
 
 /* Includes ------------------------------------------------------------------*/
+#include "stm32l0xx.h"
 #include "stm32l0xx_it.h"
 #include "LED.h"
 
@@ -70,7 +71,12 @@ void HardFault_Handler(void) {
 	/* Go to infinite loop when Hard Fault exception occurs */
 	while (1) {
 		LED_faultCode(LED_FAULT_HARDFAULT);
-		// We need to reset the thing here.
+
+		while (1) {
+			// WWDG should take care of this...
+			RCC->APB1ENR |= RCC_APB1ENR_WWDGEN;
+			WWDG->CR |= WWDG_CR_WDGA;
+		}
 	}
 }
 

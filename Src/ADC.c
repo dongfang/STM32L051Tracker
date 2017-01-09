@@ -65,7 +65,7 @@ void ADC_updateVoltages() {
  * ADC volt. reg. disabled, STOP mode, ... no prob.
  */
 int ADC_init() {
-	isADCUsingHSI =1;
+	isADCUsingHSI = 1;
 
 	RCC->CR = RCC_CR_HSION;
 		while (!(RCC->CR & RCC_CR_HSIRDY)) {

@@ -17,8 +17,7 @@ void SysTick_Handler(void) {
 void timer_sleep(uint32_t time) {
 	uint32_t timeout = systime + time;
 	int32_t diff;
-	PWR->CR = (PWR->CR & ~3);// | PWR_CR_FWU;
-	SCB->SCR &= ~4; // Don't STOP.
+
 	do {
 		// systime = 2^32-11, time=20, timeout=10
 		// diff = 2^32-11 - 10 as

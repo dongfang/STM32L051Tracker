@@ -10,6 +10,8 @@
 #include "Systime.h"
 #include "stm32l0xx.h"
 
+extern int generalShit;
+
 DateTime_t GPSDateTime __attribute__((section (".noinit")));
 NMEA_CRS_SPD_Info_t GPSCourseSpeed __attribute__((section (".noinit")));
 Location_t GPSPosition __attribute__((section (".noinit")));
@@ -100,6 +102,8 @@ uint8_t GPS_waitForTimelock(GPSStopFunctionInit_t* stopInit,
 	stopInit();
 	GPS_invalidateDateTime();
 
+	WWDG_pat();
+
 	do {
 		GPS_driver();
 		// volatile uint32_t uart1ClockSource = RCC->CCIPR & RCC_CCIPR_USART1SEL;
@@ -123,8 +127,12 @@ uint8_t GPS_waitForTimelock(GPSStopFunctionInit_t* stopInit,
 
 boolean GPS_waitForPosition(GPSStopFunctionInit_t* stopInit,
 		GPSStopFunction_t* stopFunction, void* limit) {
+
 	stopInit();
 	GPS_invalidatePosition();
+
+	WWDG_pat();
+
 	do {
 		GPS_getData();
 		flashNumSatellites(GPSStatus.numberOfSatellites);
@@ -272,8 +280,10 @@ uint8_t GPSCycle_voltageLimited() {
 	uint32_t gpsstart = systime;
 	uint8_t result = 0;
 
-	switchTo2MHzMSI();
+	// switchMSIClock();
 	GPS_start();
+
+	generalShit = -15;
 
 	if (GPS_waitForTimelock(GPSVoltageStopFunctionInit, GPSVoltageStopFunction,
 			&cutoffVoltage)) {
@@ -281,11 +291,15 @@ uint8_t GPSCycle_voltageLimited() {
 		result = 1;
 	}
 
+	generalShit = -16;
+
 	if (GPS_waitForPrecisionPosition(GPSVoltageStopFunctionInit,
 			GPSVoltageStopFunction, &cutoffVoltage)) {
 		lastGPSFixTime = (systime - gpsstart) / 1000;
 		result = 2;
 	}
+
+	generalShit = -17;
 
 	GPS_stopListening();
 
@@ -295,6 +309,8 @@ uint8_t GPSCycle_voltageLimited() {
 	}
 
 	GPS_shutdown();
+
+	generalShit = -18;
 
 	if (result == 2) {
 		recordFlightLog();

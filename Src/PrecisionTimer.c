@@ -191,8 +191,6 @@ double measurePeriod(TimerMeasurement_t inputSelect, uint32_t minResolution,
 	TIM22->CR1 |= TIM_CR1_CEN;  // | TIM_CR1_UDIS;
 
 	// Go now.
-	PWR->CR = (PWR->CR & ~3); // | PWR_CR_FWU;
-	SCB->SCR &= ~4; // Don't STOP.
 
 	while (PT_captureState < 2 && systime < timeout) {
 		__WFI(); // do not put a breakpoint here... we don't handle overflow, and the interrupt flag will get stuck.

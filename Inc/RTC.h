@@ -10,6 +10,10 @@
 
 #include "Types.h"
 
+#define RTC_BACKUP_REGISTER_TIME_VALID_IDX 0
+#define RTC_BACKUP_REGISTER_NUM_RESETS_IDX 1
+#define RTC_BACKUP_REGISTER_NUM_WWDG_RESETS_IDX 2
+
 void RTC_init(void);
 
 void RTC_read(Time_t* out);

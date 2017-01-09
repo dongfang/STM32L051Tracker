@@ -19,6 +19,8 @@ __attribute__((section(".eemem")))            const volatile Odometer_t odometer
 
 __attribute__((section(".noinit"))) static uint32_t rand;
 
+extern int generalShit;
+
 void storeToEEPROM(uint32_t* const target, const uint32_t* const source,
 		size_t numWords) {
 	uint32_t alreadyRunning = RCC->AHBENR & RCC_AHBENR_MIFEN;
@@ -182,6 +184,7 @@ uint16_t playbackFlightLog(APRS_Band_t band, uint32_t frequency) {
 		}
 		// timer_sleep(500);
 		APRS_transmitMessage(band, TEXT_MESSAGE, frequency);
+		generalShit = 134;
 	}
 	RCC->AHBENR = (RCC_AHBENR_MIFEN & ~RCC_AHBENR_MIFEN) | alreadyRunning;
 	return n;
