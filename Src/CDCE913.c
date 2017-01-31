@@ -9,7 +9,6 @@
 #define CDCE913_I2C_ADDR 0b1100101
 #define CDCE913_I2C_ADDR_PROG (CDCE913_I2C_ADDR & 3)
 #define I2C_TIMEOUT 25
-extern int generalShit ;
 extern void I2C1_GPIO_Config();
 extern boolean I2C1_writeByte(uint8_t DeviceAddress, uint8_t registerAddress,
 		uint8_t data);
@@ -238,13 +237,9 @@ double PLL_bestPLLSetting(
 	uint8_t bestTrimOffCenter = 100;
 	uint8_t goodEnoughTrimOffCenter = 2;
 
-	generalShit = 110;
-
 	for (int Pdiv = Pdivmin;
 			Pdiv <= pdivMax && bestTrimOffCenter > goodEnoughTrimOffCenter;
 			Pdiv++) {
-		generalShit++;
-
 		double desiredMultiplication = ((double) desiredFrequency * Pdiv)
 				/ oscillatorFrequency;
 		if (desiredMultiplication < 1)
