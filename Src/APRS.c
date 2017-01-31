@@ -40,8 +40,6 @@ static void APRS_initDirectVHFTransmission(uint32_t frequency,
 static void APRS_endDirectTransmission();
 static void APRS_initDirectHFTransmission(uint32_t frequency,
 		uint32_t referenceFrequency);
-
-extern uint32_t generalShit;
 char currentTextMessage[64] __attribute__((section (".noinit")));
 
 // JUST to avoid printf's huge memory impact.
@@ -447,10 +445,8 @@ static void APRS_initDirectHFTransmission(uint32_t frequency,
 
 static void APRS_initDirectVHFTransmission(uint32_t frequency,
 		uint32_t referenceFrequency) {
-	generalShit = 106;
 	APRS_makeDirectTransmissionFrequency(frequency, referenceFrequency,
 	DIRECT_2m_HARDWARE_OUTPUT);
-	generalShit = 300;
 	AFSK_init();
 }
 
@@ -463,8 +459,6 @@ void APRS_endDirectTransmission() {
 void APRS_transmitMessage(APRS_Band_t band, APRS_MessageType_t messageType,
 		uint32_t frequency) {
 	WWDG_pat();
-
-	generalShit = 100;
 
 	const APRSTransmission_t* mode = &APRS_TRANSMISSIONS[band];
 
@@ -480,18 +474,12 @@ void APRS_transmitMessage(APRS_Band_t band, APRS_MessageType_t messageType,
 		break;
 	}
 
-	generalShit = 101;
-
 	LED_on();
 
 	// Prepare WFI
-	generalShit = 105;
-
 	packet_cnt = 0;
 	int lastPacketCnt = 0;
 	mode->initTransmitter(frequency, getCalibratedPLLOscillatorFrequency());
-
-	generalShit = 102;
 
 	while (packet_cnt != packet_size) {
 		if (packet_cnt != lastPacketCnt) {
@@ -501,13 +489,9 @@ void APRS_transmitMessage(APRS_Band_t band, APRS_MessageType_t messageType,
 		__WFI();
 	}
 
-	generalShit = 103;
-
 // We are now done transmitting.
 	mode->shutdownTransmitter();
 
 	LED_off();
-
-	generalShit = 104;
 }
 
