@@ -10,8 +10,6 @@
 #include "Systime.h"
 #include "stm32l0xx.h"
 
-extern int generalShit;
-
 DateTime_t GPSDateTime __attribute__((section (".noinit")));
 NMEA_CRS_SPD_Info_t GPSCourseSpeed __attribute__((section (".noinit")));
 Location_t GPSPosition __attribute__((section (".noinit")));
@@ -184,22 +182,26 @@ boolean GPS_waitForPrecisionPosition(GPSStopFunctionInit_t* stopInit,
 		RCC->AHBENR = (RCC_AHBENR_MIFEN & ~RCC_AHBENR_MIFEN) | alreadyRunning;
 
 		if (odometer_checksum(&tmpOdo) == tmpOdo.checksum) {
-			int timeSinceLastOdo =
-					timeAfter_seconds(&tmpOdo.lastOdometerTime,
+			int timeSinceLastOdo = timeAfter_seconds(&tmpOdo.lastOdometerTime,
 					&GPSDateTime.time);
 
 			/*
-			float dAltitude = GPSPosition.alt - tmpOdo.altitude;
-			tmpOdo.altitude = GPSPosition.alt;
-			climbRate = dAltitude * 60.0 / timeSinceLastOdo;
-			*/
+			 float dAltitude = GPSPosition.alt - tmpOdo.altitude;
+			 tmpOdo.altitude = GPSPosition.alt;
+			 climbRate = dAltitude * 60.0 / timeSinceLastOdo;
+			 */
 
 			// valid
 			double latFactor = cos(GPSPosition.lat * 0.01745329251994); // convert to radians
-			double lateralDist = GPSPosition.lat - tmpOdo.lastOdometeredPosition.lat;
-			double longitudinalDist = (GPSPosition.lon - tmpOdo.lastOdometeredPosition.lon) * latFactor;
-
-			double distsq = lateralDist*lateralDist + longitudinalDist*longitudinalDist;
+			double lateralDist = GPSPosition.lat
+					- tmpOdo.lastOdometeredPosition.lat;
+			double longitudinalDist = (GPSPosition.lon - tmpOdo.lastOdometeredPosition.lon);
+			// take the shortest way around between the 2 points.
+			if (longitudinalDist > 180) longitudinalDist -= 360;
+			else if (longitudinalDist <= -180) longitudinalDist += 360;
+			longitudinalDist *= latFactor;
+			double distsq = lateralDist * lateralDist
+					+ longitudinalDist * longitudinalDist;
 			double dist = sqrt(distsq);
 			// now it is in degrees latitude, each of which is 60nm, or 1852 * 60m
 
@@ -219,7 +221,8 @@ boolean GPS_waitForPrecisionPosition(GPSStopFunctionInit_t* stopInit,
 			// dLat=-1, dLon=-1 should yield 225. atand(1,-1) = -pi/4 = -45  180 --45 = 225
 			// dLat=1, dLon=-0.000001 should yield 359.99... atan2(-1,-0.0001) = -pi+a little = -179.999
 
-			course = 180 - atan2(-lateralDist, longitudinalDist) * 57.2957795130;
+			course = 180
+					- atan2(-lateralDist, longitudinalDist) * 57.2957795130;
 
 			tmpOdo.lastOdometerTime = GPSDateTime.time;
 		} else {
@@ -283,23 +286,17 @@ uint8_t GPSCycle_voltageLimited() {
 	// switchMSIClock();
 	GPS_start();
 
-	generalShit = -15;
-
 	if (GPS_waitForTimelock(GPSVoltageStopFunctionInit, GPSVoltageStopFunction,
 			&cutoffVoltage)) {
 		RTC_set(&GPSDateTime.time);
 		result = 1;
 	}
 
-	generalShit = -16;
-
 	if (GPS_waitForPrecisionPosition(GPSVoltageStopFunctionInit,
 			GPSVoltageStopFunction, &cutoffVoltage)) {
 		lastGPSFixTime = (systime - gpsstart) / 1000;
 		result = 2;
 	}
-
-	generalShit = -17;
 
 	GPS_stopListening();
 
@@ -309,8 +306,6 @@ uint8_t GPSCycle_voltageLimited() {
 	}
 
 	GPS_shutdown();
-
-	generalShit = -18;
 
 	if (result == 2) {
 		recordFlightLog();

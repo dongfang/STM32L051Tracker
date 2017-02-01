@@ -115,7 +115,6 @@ void WSPR_Transmit(WSPRBand_t band) {
 		}
 	}
 
-	// One COULD reduce the clock speed before WSPR, as there are no requirements.
 	switchMSIClock();
 
 	// trace_printf("Waiting for WSPR window\n");

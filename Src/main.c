@@ -22,7 +22,6 @@
 #include "Watchdog.h"
 
 SysState_t sysState;
-volatile int generalShit __attribute__((section (".noinit")));
 
 void initGeneralIOPorts() {
 	SET_BIT(RCC->IOPENR, RCC_IOPENR_GPIOAEN);
@@ -82,8 +81,13 @@ void initGeneralIOPorts() {
  isr = RTC->ISR & (RTC_ISR_ALRBF);
  } while (!isr);
  }
+
+ sysState
+ voltage
+ watchdog
+
  */
-//extern volatile uint8_t RTCHandlerFlag;
+
 void selfCalibrate() {
 	switchTo8MHzHSI();
 	GPS_start();
@@ -102,12 +106,14 @@ int main(void) {
 	// Stop WWDG at breakpoint.
 	// *((uint32_t*)0x40015808) = 1<<11;
 
-	// DBGMCU->APB1FZ = 1 << 11;
+	DBGMCU->APB1FZ = 1 << 11;
 
 	PLL_shutdown();
 
 	sysState = isGroundTestOption() ? GROUNDTEST :
 				isCalibrateOption() ? CALIBRATION : FLIGHT;
+
+	// sysState = GROUNDTEST;
 
 	LED_init(sysState == FLIGHT);
 
@@ -129,9 +135,9 @@ int main(void) {
 
 	// }
 	// if (isCalibrateOption()) {
-	// while(1)
+	//while(1)
 	// selfCalibrate();
-	// }
+	//}
 
 	Time_t alarmTime = { .hours = 12, .minutes = 0, .seconds = 0 };
 	RTC_scheduleAlarmB(&alarmTime);
@@ -141,97 +147,67 @@ int main(void) {
 	static uint8_t gpsOrWSPR;
 
 	while (1) {
-		generalShit = -10;
-
 		ADC_init();
 		switchMSIClock(); // just to get systick going.
-
-		// WWDG_pat();
-
-		generalShit = -11;
 
 		ADC_measureVddAndTemperature();
 		ADC_updateVoltages();
 		float energy = vBattery + vSolar / 2;
 
-		generalShit = -12;
-
-		if (energy >= 2.75) {
+		if (energy >= 2.75) { // 2.75
 			if (gpsOrWSPR) {
-				generalShit = -13;
-
 				// Do WSPR. First, do some APRS blah blah to kill time. Seriously, that's why.
 				switchTo8MHzHSI();
 				uint8_t sentOne = 0;
 
-				generalShit = 10;
-
+				// pre WSPR
 				for (uint8_t i = 0; i < sizeof(latestAPRSRegions); i++) {
 					if (latestAPRSRegions[i]) {
-						APRS_transmitMessage(VHF, TELEMETRY_MESSAGE,
-								APRS_WORLD_MAP[i].frequency);
+						APRS_transmitMessage(VHF, TELEMETRY_MESSAGE, APRS_WORLD_MAP[i].frequency);
 						sentOne = true;
-						break;
 					}
 				}
-				generalShit = 130;
+
 				if (!sentOne) {
-					APRS_transmitMessage(VHF, TELEMETRY_MESSAGE,
-					DIAGNOSTICS_APRS_FREQUENCY);
+					APRS_transmitMessage(VHF, TELEMETRY_MESSAGE, DIAGNOSTICS_APRS_FREQUENCY);
 				}
-				generalShit = 131;
 
-				if (RTC_readBackupRegister(
-				RTC_BACKUP_REGISTER_TIME_VALID_IDX)) {
-					generalShit = 11;
-
+				if (RTC_readBackupRegister(RTC_BACKUP_REGISTER_TIME_VALID_IDX)) {
 					doWSPR(THIRTY_M);
 					ADC_updateVoltages();
 
-					generalShit = 12;
-
 					switchTo8MHzHSI();
+					// Post WSPR
 					for (uint8_t i = 0; i < sizeof(latestAPRSRegions); i++) {
 						if (latestAPRSRegions[i]) {
-							APRS_transmitMessage(VHF, TELEMETRY_MESSAGE,
-									APRS_WORLD_MAP[i].frequency);
-							generalShit = 132;
+							APRS_transmitMessage(VHF, TELEMETRY_MESSAGE, APRS_WORLD_MAP[i].frequency);
 							break;
 						}
 					}
-					generalShit = 13;
 				}
 			} else {
-				generalShit = -14;
+/*
+				while(1){
+				switchTo8MHzHSI();
+				strcpy(currentTextMessage, "PreGPS");
+				APRS_transmitMessage(VHF, TEXT_MESSAGE, DIAGNOSTICS_APRS_FREQUENCY);
 				switchMSIClock();
-				generalShit = -15;
+				}
+*/
 				if (GPSCycle_voltageLimited()) {
-					generalShit = 1;
-
 					//  if (1) {
-					RTC_writeBackupRegister(RTC_BACKUP_REGISTER_TIME_VALID_IDX,
-							1);
-
+					RTC_writeBackupRegister(RTC_BACKUP_REGISTER_TIME_VALID_IDX, 1);
 					switchTo8MHzHSI();
-
-					generalShit = 2;
-
 					APRS_frequenciesFromPosition(&lastNonzeroPosition,
 							latestAPRSRegions, latestAPRSCores);
-
-					generalShit = 3;
 
 					for (uint8_t i = 0; i < sizeof(latestAPRSRegions); i++) {
 						if (latestAPRSRegions[i]) {
 							APRS_transmitMessage(VHF,
 									COMPRESSED_POSITION_MESSAGE,
 									APRS_WORLD_MAP[i].frequency);
-							generalShit = 133;
 						}
 					}
-
-					generalShit = 5;
-
 				}
 			}
 		}
@@ -243,10 +219,7 @@ int main(void) {
 		for (uint8_t i = 0; i < sizeof(latestAPRSCores); i++) {
 			if (latestAPRSCores[i]) {
 				uint8_t m = 0;
-				while (m < 3
-						&& m
-								< playbackFlightLog(VHF,
-										APRS_WORLD_MAP[i].frequency) / 3)
+				while (m < 3 && m < playbackFlightLog(VHF, APRS_WORLD_MAP[i].frequency) / 3)
 					m++;
 			}
 		}
@@ -266,7 +239,7 @@ int main(void) {
 		 * Bit1: SLEEPONEXIT (handler-only mode)
 		 */
 
-		if (sysState == FLIGHT) {
+		if ((sysState == FLIGHT)) {
 			PWR->CR = (PWR->CR & ~3) | PWR_CR_LPSDSR | PWR_CR_ULP | PWR_CR_FWU;
 			SCB->SCR |= 4; // Deep sleep. Supposed to be STOP mode in combination with the PWR settings.
 			uint32_t isr;
@@ -282,7 +255,9 @@ int main(void) {
 			do {
 				isr = RTC->ISR & (RTC_ISR_WUTF | RTC_ISR_ALRAF | RTC_ISR_ALRBF);
 				WWDG_pat();
+				__WFI(); // not strictly needed.
 			} while (!isr);
 		}
 	}
 }
+
