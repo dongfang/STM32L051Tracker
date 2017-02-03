@@ -135,9 +135,8 @@ int main(void) {
 
 	// }
 	// if (isCalibrateOption()) {
-	//while(1)
-	// selfCalibrate();
-	//}
+//	while(1)
+//	 selfCalibrate();
 
 	Time_t alarmTime = { .hours = 12, .minutes = 0, .seconds = 0 };
 	RTC_scheduleAlarmB(&alarmTime);
@@ -186,14 +185,6 @@ int main(void) {
 					}
 				}
 			} else {
-/*
-				while(1){
-				switchTo8MHzHSI();
-				strcpy(currentTextMessage, "PreGPS");
-				APRS_transmitMessage(VHF, TEXT_MESSAGE, DIAGNOSTICS_APRS_FREQUENCY);
-				switchMSIClock();
-				}
-*/
 				if (GPSCycle_voltageLimited()) {
 					//  if (1) {
 					RTC_writeBackupRegister(RTC_BACKUP_REGISTER_TIME_VALID_IDX, 1);
@@ -210,10 +201,9 @@ int main(void) {
 					}
 				}
 			}
+			gpsOrWSPR = !gpsOrWSPR;
 		}
-
 		// Log playback irrespective of whether gps or aprs, hm.
-		gpsOrWSPR = !gpsOrWSPR;
 
 		switchTo8MHzHSI();
 		for (uint8_t i = 0; i < sizeof(latestAPRSCores); i++) {

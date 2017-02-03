@@ -486,7 +486,7 @@ void APRS_transmitMessage(APRS_Band_t band, APRS_MessageType_t messageType,
 			WWDG_pat(); // if there is progress only.
 			lastPacketCnt = packet_cnt;
 		}
-		__WFI();
+		// This fucked up modulation after deepsleep! __WFI();
 	}
 
 // We are now done transmitting.
