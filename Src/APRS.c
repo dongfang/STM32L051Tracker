@@ -307,8 +307,7 @@ void APRS_marshallTelemetryMessage(uint16_t txDelay) {
 	 ax25_send_string(temp);
 	 */
 
-	// ax25_send_byte('m');
-	// ax25_send_byte(scheduleName);
+	// Disable memory interface again.
 	RCC->AHBENR = (RCC_AHBENR_MIFEN & ~RCC_AHBENR_MIFEN) | alreadyRunning;
 	APRS_marshallTextMessage(txDelay);
 }

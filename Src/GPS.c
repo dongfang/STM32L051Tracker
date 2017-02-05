@@ -250,23 +250,27 @@ void GPS_shutdown() {
 }
 
 uint8_t GPSCycle_timeLimited() {
-	uint32_t gpsTimeout = 100000;
+	uint32_t cutoffMillis = 300000;
 	uint32_t gpsstart = systime;
 	uint8_t result = 0;
 
 	GPS_start();
 
-	if (GPS_waitForTimelock(GPSTimeoutStopFunctionInit, GPSTimeoutStopFunction,
-			&gpsTimeout)) {
+	if (GPS_waitForTimelock(GPSTimeoutStopFunctionInit, GPSTimeoutStopFunction, &cutoffMillis)) {
 		RTC_set(&GPSDateTime.time);
 		result = 1;
 	}
 
-	if (GPS_waitForPrecisionPosition(GPSTimeoutStopFunctionInit,
-			GPSTimeoutStopFunction, &gpsTimeout)) {
+	if (GPS_waitForPrecisionPosition(GPSTimeoutStopFunctionInit, GPSTimeoutStopFunction, &cutoffMillis)) {
 		lastGPSFixTime = (systime - gpsstart) / 1000;
-		calibratePLLFrequency();
 		result = 2;
+	}
+
+	GPS_stopListening();
+
+	if (result == 2) {
+		switchTo8MHzHSI();
+		calibratePLLFrequency();
 	}
 
 	GPS_shutdown();
@@ -278,12 +282,12 @@ uint8_t GPSCycle_timeLimited() {
 	return result;
 }
 
+
 uint8_t GPSCycle_voltageLimited() {
 	float cutoffVoltage = 2.1;
 	uint32_t gpsstart = systime;
 	uint8_t result = 0;
 
-	// switchMSIClock();
 	GPS_start();
 
 	if (GPS_waitForTimelock(GPSVoltageStopFunctionInit, GPSVoltageStopFunction,

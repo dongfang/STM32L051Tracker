@@ -141,94 +141,23 @@ int main(void) {
 	Time_t alarmTime = { .hours = 12, .minutes = 0, .seconds = 0 };
 	RTC_scheduleAlarmB(&alarmTime);
 
+	// Wait 10 minutes before any first activity. This should help limit the frequency of
+	// infinite reset cycles with a weak battery.
+	RTC_read(&alarmTime);
+	RTC_nextModoloMinutes(&alarmTime, 10, 0);
+	RTC_scheduleAlarmA(&alarmTime);
+
 	WWDG_init();
 
 	static uint8_t gpsOrWSPR;
 
 	while (1) {
-		ADC_init();
-		switchMSIClock(); // just to get systick going.
-
-		ADC_measureVddAndTemperature();
-		ADC_updateVoltages();
-		float energy = vBattery + vSolar / 2;
-
-		if (energy >= 2.75) { // 2.75
-			if (gpsOrWSPR) {
-				// Do WSPR. First, do some APRS blah blah to kill time. Seriously, that's why.
-				switchTo8MHzHSI();
-				uint8_t sentOne = 0;
-
-				// pre WSPR
-				for (uint8_t i = 0; i < sizeof(latestAPRSRegions); i++) {
-					if (latestAPRSRegions[i]) {
-						APRS_transmitMessage(VHF, TELEMETRY_MESSAGE, APRS_WORLD_MAP[i].frequency);
-						sentOne = true;
-					}
-				}
-
-				if (!sentOne) {
-					APRS_transmitMessage(VHF, TELEMETRY_MESSAGE, DIAGNOSTICS_APRS_FREQUENCY);
-				}
-
-				if (RTC_readBackupRegister(RTC_BACKUP_REGISTER_TIME_VALID_IDX)) {
-					doWSPR(THIRTY_M);
-					ADC_updateVoltages();
-
-					switchTo8MHzHSI();
-					// Post WSPR
-					for (uint8_t i = 0; i < sizeof(latestAPRSRegions); i++) {
-						if (latestAPRSRegions[i]) {
-							APRS_transmitMessage(VHF, TELEMETRY_MESSAGE, APRS_WORLD_MAP[i].frequency);
-							break;
-						}
-					}
-				}
-			} else {
-				if (GPSCycle_voltageLimited()) {
-					//  if (1) {
-					RTC_writeBackupRegister(RTC_BACKUP_REGISTER_TIME_VALID_IDX, 1);
-					switchTo8MHzHSI();
-					APRS_frequenciesFromPosition(&lastNonzeroPosition,
-							latestAPRSRegions, latestAPRSCores);
-
-					for (uint8_t i = 0; i < sizeof(latestAPRSRegions); i++) {
-						if (latestAPRSRegions[i]) {
-							APRS_transmitMessage(VHF,
-									COMPRESSED_POSITION_MESSAGE,
-									APRS_WORLD_MAP[i].frequency);
-						}
-					}
-				}
-			}
-			gpsOrWSPR = !gpsOrWSPR;
-		}
-		// Log playback irrespective of whether gps or aprs, hm.
-
-		switchTo8MHzHSI();
-		for (uint8_t i = 0; i < sizeof(latestAPRSCores); i++) {
-			if (latestAPRSCores[i]) {
-				uint8_t m = 0;
-				while (m < 3 && m < playbackFlightLog(VHF, APRS_WORLD_MAP[i].frequency) / 3)
-					m++;
-			}
-		}
-
-		switchMSIClock();
-
-		ADC_shutdown();
-
-		RTC_read(&alarmTime);
-		RTC_nextModoloMinutes(&alarmTime, 2, 0);
-		RTC_scheduleAlarmA(&alarmTime);
-
 		/*
 		 * SCR:
 		 * Bit4: Whether non enabled interrupts can wake up from WFE
 		 * Bit2: SLEEPDEEP
 		 * Bit1: SLEEPONEXIT (handler-only mode)
 		 */
-
 		if ((sysState == FLIGHT)) {
 			PWR->CR = (PWR->CR & ~3) | PWR_CR_LPSDSR | PWR_CR_ULP | PWR_CR_FWU;
 			SCB->SCR |= 4; // Deep sleep. Supposed to be STOP mode in combination with the PWR settings.
@@ -241,6 +170,7 @@ int main(void) {
 			SCB->SCR &= ~4;
 			RTC->ISR &= ~isr;
 		} else {
+			// Busy-wait. This will avoid throwing off a debugger in deepsleep.
 			uint32_t isr;
 			do {
 				isr = RTC->ISR & (RTC_ISR_WUTF | RTC_ISR_ALRAF | RTC_ISR_ALRBF);
@@ -248,6 +178,79 @@ int main(void) {
 				__WFI(); // not strictly needed.
 			} while (!isr);
 		}
+
+		ADC_init();
+		switchMSIClock(); // just to get systick going.
+		ADC_measureVddAndTemperature();
+		ADC_updateVoltages();
+		ADC_shutdown();
+
+		if (gpsOrWSPR) {
+			// Do WSPR. First, do some APRS blah blah to kill time. Seriously, that's why.
+			switchTo8MHzHSI();
+			uint8_t sentOne = 0;
+
+			// pre WSPR
+			for (uint8_t i = 0; i < sizeof(latestAPRSRegions); i++) {
+				if (latestAPRSRegions[i]) {
+					APRS_transmitMessage(VHF, TELEMETRY_MESSAGE,
+							APRS_WORLD_MAP[i].frequency);
+					sentOne = true;
+					break; // Send ONLY one.
+				}
+			}
+
+			if (!sentOne) {
+				APRS_transmitMessage(VHF, TELEMETRY_MESSAGE,
+						DIAGNOSTICS_APRS_FREQUENCY);
+			}
+
+			if (RTC_readBackupRegister(RTC_BACKUP_REGISTER_TIME_VALID_IDX)) {
+				doWSPR(THIRTY_M);
+			}
+		} else { // GPS
+			if (GPSCycle_timeLimited()) {
+				RTC_writeBackupRegister(RTC_BACKUP_REGISTER_TIME_VALID_IDX, 1);
+
+				switchTo8MHzHSI();
+				APRS_frequenciesFromPosition(&lastNonzeroPosition,
+						latestAPRSRegions, latestAPRSCores);
+
+				for (uint8_t i = 0; i < sizeof(latestAPRSRegions); i++) {
+					if (latestAPRSRegions[i]) {
+						APRS_transmitMessage(VHF, COMPRESSED_POSITION_MESSAGE,
+								APRS_WORLD_MAP[i].frequency);
+					}
+				}
+			}
+		}
+
+		gpsOrWSPR = !gpsOrWSPR;
+
+		// Log playback irrespective of whether gps or aprs, hm.
+		switchTo8MHzHSI();
+		for (uint8_t i = 0; i < sizeof(latestAPRSCores); i++) {
+			if (latestAPRSCores[i]) {
+				uint8_t m = 0;
+				while (m < 3 && m < playbackFlightLog(VHF, APRS_WORLD_MAP[i].frequency) / 3)
+					m++;
+			}
+		}
+
+		float energy = vBattery + vSolar / 2;
+
+		int scheduleMinutes = 60;
+		if (energy >= 3.3) scheduleMinutes = 32;
+		if (energy >= 3.6) scheduleMinutes = 16;
+		if (energy >= 3.9) scheduleMinutes = 8;
+		if (energy >= 4.2) scheduleMinutes = 4;
+		if (energy >= 4.5) scheduleMinutes = 2;
+
+		RTC_read(&alarmTime);
+		RTC_nextModoloMinutes(&alarmTime, scheduleMinutes, 0);
+		RTC_scheduleAlarmA(&alarmTime);
+
+		switchMSIClock();
 	}
 }
 

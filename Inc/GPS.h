@@ -59,6 +59,7 @@ typedef uint8_t(GPSStopFunction_t)(void*);
 //void GPS_stopListening();
 //void GPS_shutdown();
 uint8_t GPSCycle_voltageLimited();
+uint8_t GPSCycle_timeLimited();
 uint8_t GPS_waitForTimelock(GPSStopFunctionInit_t* stopInit, GPSStopFunction_t* stopFunction, void* limit);
 uint8_t GPS_waitForPosition(GPSStopFunctionInit_t* stopInit, GPSStopFunction_t* stopFunction, void* limit);
 uint8_t GPS_waitForPrecisionPosition(GPSStopFunctionInit_t* stopInit, GPSStopFunction_t* stopFunction, void* limit);
